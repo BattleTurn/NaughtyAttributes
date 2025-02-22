@@ -14,6 +14,8 @@ namespace NaughtyAttributes.Editor
         private IEnumerable<FieldInfo> _nonSerializedFields;
         private IEnumerable<PropertyInfo> _nativeProperties;
         private IEnumerable<MethodInfo> _methods;
+        private List<object[]> _methodParameters;
+
         private Dictionary<string, SavedBool> _foldouts = new Dictionary<string, SavedBool>();
 
         protected virtual void OnEnable()
@@ -183,9 +185,14 @@ namespace NaughtyAttributes.Editor
                         EditorGUILayout.GetControlRect(false), HorizontalLineAttribute.DefaultHeight, HorizontalLineAttribute.DefaultColor.GetColor());
                 }
 
-                foreach (var method in _methods)
+                if (_methodParameters == null || _methodParameters.Count != _methods.Count())
                 {
-                    NaughtyEditorGUI.Button(serializedObject.targetObject, method);
+                    _methodParameters = new List<object[]>(Enumerable.Repeat(new object[0], _methods.Count()));
+                }
+
+                for (int i = 0; i < _methods.Count(); i++)
+                {
+                    NaughtyEditorGUI.Button(serializedObject.targetObject, _methods.ElementAt(i), i, ref _methodParameters);
                 }
             }
         }

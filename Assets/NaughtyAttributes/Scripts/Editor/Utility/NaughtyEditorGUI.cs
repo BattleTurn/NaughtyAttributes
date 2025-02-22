@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
@@ -132,7 +133,7 @@ namespace NaughtyAttributes.Editor
             }
         }
 
-        public static void Button(UnityEngine.Object target, MethodInfo methodInfo)
+        public static void Button(UnityEngine.Object target, MethodInfo methodInfo, int index, ref List<object[]> parametersDatas)
         {
             bool visible = ButtonUtility.IsVisible(target, methodInfo);
             if (!visible)
@@ -193,8 +194,77 @@ namespace NaughtyAttributes.Editor
             }
             else
             {
-                string warning = typeof(ButtonAttribute).Name + " works only on methods with no parameters";
-                HelpBox_Layout(warning, MessageType.Warning, context: target, logToConsole: true);
+                /*string warning = typeof(ButtonAttribute).Name + " works only on methods with no parameters";
+                HelpBox_Layout(warning, MessageType.Warning, context: target, logToConsole: true);*/
+                var parameters = methodInfo.GetParameters();
+
+                if (parametersDatas[index] == null || parametersDatas[index].Length != parameters.Length)
+                {
+                    parametersDatas[index] = new object[parameters.Length];
+
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        parametersDatas[index][i] = parameters[i].ParameterType.IsValueType ? Activator.CreateInstance(parameters[i].ParameterType) : null;
+                    }
+                }
+
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    var draw = Parameter_Layout(parameters[i], ref parametersDatas[index][i]);
+                    if (!draw)
+                    {
+                        HelpBox_Layout($"{methodInfo.Name} have parameter not support!", MessageType.Warning, context: target, logToConsole: false);
+                        return;
+                    }
+                }
+
+                ButtonAttribute buttonAttribute = (ButtonAttribute)methodInfo.GetCustomAttributes(typeof(ButtonAttribute), true)[0];
+                string buttonText = string.IsNullOrEmpty(buttonAttribute.Text) ? ObjectNames.NicifyVariableName(methodInfo.Name) : buttonAttribute.Text;
+
+                bool buttonEnabled = ButtonUtility.IsEnabled(target, methodInfo);
+
+                EButtonEnableMode mode = buttonAttribute.SelectedEnableMode;
+                buttonEnabled &=
+                    mode == EButtonEnableMode.Always ||
+                    mode == EButtonEnableMode.Editor && !Application.isPlaying ||
+                    mode == EButtonEnableMode.Playmode && Application.isPlaying;
+
+                bool methodIsCoroutine = methodInfo.ReturnType == typeof(IEnumerator);
+                if (methodIsCoroutine)
+                {
+                    buttonEnabled &= (Application.isPlaying ? true : false);
+                }
+
+                EditorGUI.BeginDisabledGroup(!buttonEnabled);
+
+                if (GUILayout.Button(buttonText, _buttonStyle))
+                {
+                    IEnumerator methodResult = methodInfo.Invoke(target, parametersDatas[index]) as IEnumerator;
+
+                    if (!Application.isPlaying)
+                    {
+                        // Set target object and scene dirty to serialize changes to disk
+                        EditorUtility.SetDirty(target);
+
+                        PrefabStage stage = PrefabStageUtility.GetCurrentPrefabStage();
+                        if (stage != null)
+                        {
+                            // Prefab mode
+                            EditorSceneManager.MarkSceneDirty(stage.scene);
+                        }
+                        else
+                        {
+                            // Normal scene
+                            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                        }
+                    }
+                    else if (methodResult != null && target is MonoBehaviour behaviour)
+                    {
+                        behaviour.StartCoroutine(methodResult);
+                    }
+                }
+
+                EditorGUI.EndDisabledGroup();
             }
         }
 
@@ -358,6 +428,109 @@ namespace NaughtyAttributes.Editor
 
                 return isDrawn;
             }
+        }
+
+        public static bool Parameter_Layout(ParameterInfo parameter, ref object value)
+        {
+            Type valueType = parameter.ParameterType;
+            string label = parameter.Name;
+
+            bool isDrawn = true;
+
+            if (valueType == typeof(bool))
+            {
+                value = EditorGUILayout.Toggle(label, (bool)value);
+            }
+            else if (valueType == typeof(short))
+            {
+                value = EditorGUILayout.IntField(label, (short)value);
+            }
+            else if (valueType == typeof(ushort))
+            {
+                value = EditorGUILayout.IntField(label, (ushort)value);
+            }
+            else if (valueType == typeof(int))
+            {
+                value = EditorGUILayout.IntField(label, (int)value);
+            }
+            else if (valueType == typeof(uint))
+            {
+                value = EditorGUILayout.LongField(label, (uint)value);
+            }
+            else if (valueType == typeof(long))
+            {
+                value = EditorGUILayout.LongField(label, (long)value);
+            }
+            else if (valueType == typeof(ulong))
+            {
+                value = EditorGUILayout.TextField(label, ((ulong)value).ToString());
+            }
+            else if (valueType == typeof(float))
+            {
+                value = EditorGUILayout.FloatField(label, (float)value);
+            }
+            else if (valueType == typeof(double))
+            {
+                value = EditorGUILayout.DoubleField(label, (double)value);
+            }
+            else if (valueType == typeof(string))
+            {
+                value = EditorGUILayout.TextField(label, (string)value);
+            }
+            else if (valueType == typeof(Vector2))
+            {
+                value = EditorGUILayout.Vector2Field(label, (Vector2)value);
+            }
+            else if (valueType == typeof(Vector3))
+            {
+                value = EditorGUILayout.Vector3Field(label, (Vector3)value);
+            }
+            else if (valueType == typeof(Vector4))
+            {
+                value = EditorGUILayout.Vector4Field(label, (Vector4)value);
+            }
+            else if (valueType == typeof(Vector2Int))
+            {
+                value = EditorGUILayout.Vector2IntField(label, (Vector2Int)value);
+            }
+            else if (valueType == typeof(Vector3Int))
+            {
+                value = EditorGUILayout.Vector3IntField(label, (Vector3Int)value);
+            }
+            else if (valueType == typeof(Color))
+            {
+                value = EditorGUILayout.ColorField(label, (Color)value);
+            }
+            else if (valueType == typeof(Bounds))
+            {
+                value = EditorGUILayout.BoundsField(label, (Bounds)value);
+            }
+            else if (valueType == typeof(Rect))
+            {
+                value = EditorGUILayout.RectField(label, (Rect)value);
+            }
+            else if (valueType == typeof(RectInt))
+            {
+                value = EditorGUILayout.RectIntField(label, (RectInt)value);
+            }
+            else if (typeof(UnityEngine.Object).IsAssignableFrom(valueType))
+            {
+                value = EditorGUILayout.ObjectField(label, (UnityEngine.Object)value, valueType, true);
+            }
+            else if (valueType.BaseType == typeof(Enum))
+            {
+                value = EditorGUILayout.EnumPopup(label, (Enum)value);
+            }
+            else if (valueType.BaseType == typeof(System.Reflection.TypeInfo))
+            {
+                value = EditorGUILayout.TextField(label, value.ToString());
+            }
+            else
+            {
+                isDrawn = false;
+            }
+
+            return isDrawn;
         }
 
         private static void DebugLogMessage(string message, MessageType type, UnityEngine.Object context)
