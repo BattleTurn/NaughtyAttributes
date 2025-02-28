@@ -34,6 +34,7 @@ namespace NaughtyAttributes.Editor
             if (EditorGUI.EndChangeCheck())
             {
                 PropertyUtility.CallOnValueChangedCallbacks(property);
+                PropertyUtility.CallOnValidateCallbacks(property);
             }
         }
 

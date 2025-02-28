@@ -68,6 +68,74 @@ namespace NaughtyAttributes.Editor
             }
         }
 
+        public static void CallOnValidateCallbacks(SerializedProperty property)
+        {
+            OnValidateAttribute[] onValueChangedAttributes = GetAttributes<OnValidateAttribute>(property);
+            if (onValueChangedAttributes.Length == 0)
+            {
+                return;
+            }
+
+            object target = GetTargetObjectWithProperty(property);
+            property.serializedObject.ApplyModifiedProperties(); // We must apply modifications so that the new value is updated in the serialized object
+
+            foreach (var onValueChangedAttribute in onValueChangedAttributes)
+            {
+                string warning = string.Format("{0} can invoke only methods with 'void' return type and 0 parameters",
+                        onValueChangedAttribute.GetType().Name);
+
+                MethodInfo callbackMethod = ReflectionUtility.GetMethod(target, onValueChangedAttribute.CallbackName);
+                if (callbackMethod != null && callbackMethod.ReturnType == typeof(void))
+                {
+                    if (callbackMethod.GetParameters().Length == 0)
+                    {
+                        callbackMethod.Invoke(target, new object[] { });
+                    }
+                    else if (callbackMethod.GetParameters().Length == 1)
+                    {
+                        if (Parameter_Convert(property, out object parameter))
+                            callbackMethod.Invoke(target, new object[] { parameter });
+                    }
+                    else
+                    {
+                        Debug.LogWarning(warning, property.serializedObject.targetObject);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning(warning, property.serializedObject.targetObject);
+                }
+            }
+        }
+
+        public static bool Parameter_Convert(SerializedProperty property, out object value)
+        {
+            bool isConvert = true;
+
+            try
+            {
+                var targetObject = property.serializedObject.targetObject;
+                var targetObjectClassType = targetObject.GetType();
+                var field = targetObjectClassType.GetField(property.propertyPath);
+                if (field != null)
+                {
+                    value = field.GetValue(targetObject);
+                }
+                else
+                {
+                    value = null;
+                    isConvert = false;
+                }
+            }
+            catch
+            {
+                value = null;
+                isConvert = false;
+            }
+
+            return isConvert;
+        }
+
         public static bool IsEnabled(SerializedProperty property)
         {
             ReadOnlyAttribute readOnlyAttribute = GetAttribute<ReadOnlyAttribute>(property);
