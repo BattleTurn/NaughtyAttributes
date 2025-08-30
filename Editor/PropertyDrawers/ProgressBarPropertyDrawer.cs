@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEditor;
 using System.Reflection;
+using System;
 
 namespace NaughtyAttributes.Editor
 {
@@ -37,7 +38,7 @@ namespace NaughtyAttributes.Editor
             {
                 var fillPercentage = value / CastToFloat(maxValue);
                 var barLabel = (!string.IsNullOrEmpty(progressBarAttribute.Name) ? "[" + progressBarAttribute.Name + "] " : "") + valueFormatted + "/" + maxValue;
-                var barColor = progressBarAttribute.Color.GetColor();
+                var barColor = GetColorValue(property, progressBarAttribute);
                 var labelColor = Color.white;
 
                 var indentLength = NaughtyEditorGUI.GetIndentLength(rect);
@@ -49,7 +50,7 @@ namespace NaughtyAttributes.Editor
                     height = EditorGUIUtility.singleLineHeight
                 };
 
-                DrawBar(barRect, Mathf.Clamp01(fillPercentage), barLabel, barColor, labelColor);
+                DrawBar(barRect, Mathf.Clamp01(fillPercentage), barLabel, CastToColor(barColor), labelColor);
             }
             else
             {
@@ -96,6 +97,124 @@ namespace NaughtyAttributes.Editor
                 return null;
             }
         }
+
+        private object GetColorValue(SerializedProperty property, ProgressBarAttribute progressBarAttribute)
+        {
+            if (string.IsNullOrEmpty(progressBarAttribute.ColorValueName))
+            {
+                return progressBarAttribute.Color;
+            }
+            else
+            {
+                object target = PropertyUtility.GetTargetObjectWithProperty(property);
+
+                MethodInfo colorMethod = ReflectionUtility.GetMethod(target, progressBarAttribute.ColorValueName);
+
+                if (colorMethod != null &&
+                    colorMethod.ReturnType == typeof(Color))
+                {
+                    ParameterInfo[] callbackParameters = colorMethod.GetParameters();
+                    return GetColorHandle(property, progressBarAttribute, target, IsColor, colorMethod, callbackParameters);
+                }
+                else if (colorMethod != null &&
+                         colorMethod.ReturnType == typeof(string))
+                {
+                    ParameterInfo[] callbackParameters = colorMethod.GetParameters();
+                    return GetColorHandle(property, progressBarAttribute, target, IsString, colorMethod, callbackParameters);
+                }
+                else
+                {
+                    // Try to fallback to a field or property with the same name (support color fields/properties or string names)
+                    FieldInfo field = ReflectionUtility.GetField(target, progressBarAttribute.ColorValueName);
+                    if (field != null)
+                    {
+                        var value = field.GetValue(target);
+                        if (value is Color || value is string)
+                        {
+                            return value;
+                        }
+                    }
+
+                    PropertyInfo prop = ReflectionUtility.GetProperty(target, progressBarAttribute.ColorValueName);
+                    if (prop != null)
+                    {
+                        var value = prop.GetValue(target);
+                        if (value is Color || value is string)
+                        {
+                            return value;
+                        }
+                    }
+                }
+
+                // Fallback to the static color on the attribute if nothing valid was found
+                return progressBarAttribute.Color;
+            }
+        }
+
+        private static bool IsString(object obj)
+        {
+            return obj is string;
+        }
+
+        private static bool IsColor(object obj)
+        {
+            return obj is Color;
+        }
+
+        delegate bool ConditionDelegate(object obj);
+
+        private static object GetColorHandle(SerializedProperty property, ProgressBarAttribute progressBarAttribute, object target, ConditionDelegate condition, MethodInfo colorMethod, ParameterInfo[] callbackParameters)
+        {
+            if (callbackParameters.Length == 0)
+            {
+                var result = colorMethod.Invoke(target, null);
+                if (condition(result))
+                {
+                    return result;
+                }
+                else
+                {
+                    NaughtyEditorGUI.HelpBox_Layout(
+                        progressBarAttribute.ColorValueName + " is not valid", MessageType.Error, context: property.serializedObject.targetObject);
+                }
+            }
+            else if (callbackParameters.Length == 1)
+            {
+                FieldInfo fieldInfo = ReflectionUtility.GetField(target, property.name);
+                Type fieldType = fieldInfo.FieldType;
+                Type parameterType = callbackParameters[0].ParameterType;
+
+                if (fieldType == parameterType)
+                {
+                    var result = colorMethod.Invoke(target, new object[] { fieldInfo.GetValue(target) });
+                    if (condition(result))
+                    {
+                        return result;
+                    }
+                    else
+                    {
+                        NaughtyEditorGUI.HelpBox_Layout(
+                            progressBarAttribute.ColorValueName + " is not valid", MessageType.Error, context: property.serializedObject.targetObject);
+                    }
+                }
+                else
+                {
+                    string warning = "The field type is not the same as the callback's parameter type";
+                    NaughtyEditorGUI.HelpBox_Layout(warning, MessageType.Warning, context: property.serializedObject.targetObject);
+                }
+            }
+            else
+            {
+                string warning =
+                    progressBarAttribute.GetType().Name +
+                    " needs a callback with string return type and an optional single parameter of the same type as the field";
+
+                NaughtyEditorGUI.HelpBox_Layout(warning, MessageType.Warning, context: property.serializedObject.targetObject);
+            }
+
+            return null;
+        }
+
 
         private void DrawBar(Rect rect, float fillPercent, string label, Color barColor, Color labelColor)
         {
@@ -149,6 +268,20 @@ namespace NaughtyAttributes.Editor
             {
                 return (float)obj;
             }
+        }
+
+        private Color CastToColor(object obj)
+        {
+            if (obj is Color color)
+            {
+                return color;
+            }
+            else if (obj is string colorString)
+            {
+                return NaughtyColorUtility.GetColor(colorString, Color.white);
+            }
+
+            return Color.white;
         }
     }
 }
