@@ -1,10 +1,9 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEditor;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
@@ -25,64 +24,75 @@ namespace NaughtyAttributes.Editor
         }
 
         /// <summary>
-        /// Draw a property and (optionally) its children through the Naughty pipeline.
-        /// IMPORTANT:
-        ///  - We DO NOT rely on Unity's built-in includeChildren recursion.
-        ///  - We draw the current property (so any CustomPropertyDrawer applies),
-        ///    then manually iterate visible children and feed each one back into this method.
-        /// Result:
-        ///  - Nested objects (serializable classes/structs, ScriptableObjects, etc.)
-        ///    get full Naughty processing without requiring [AllowNesting].
+        /// Draw a property (and optionally its children) through the Naughty pipeline.
+        /// We combine Layout (to reserve one line) with IMGUI (to draw into that line):
+        ///  - Reserve exactly one rect via EditorGUILayout.GetControlRect(height).
+        ///  - Wrap with BeginProperty/EndProperty to keep prefab overrides & undo working.
+        ///  - Draw THIS property only using EditorGUI.PropertyField(rect, ..., includeChildren:false).
+        ///  - Recurse manually into visible children so they also go through the Naughty pipeline.
+        /// This avoids extra blank spacing and keeps nested edits functional (no [AllowNesting] needed).
         /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
             if (property == null) return;
-            if (!PropertyUtility.IsVisible(property)) return;
 
+            // Visibility for THIS property only
+            if (!PropertyUtility.IsVisible(property))
+                return;
+
+            // -------- Draw THIS property (no Unity recursion) --------
             bool enabled = PropertyUtility.IsEnabled(property);
+
+            // Reserve exactly one rect for this property (no extra line)
+            float h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+            Rect rect = EditorGUILayout.GetControlRect(hasLabel: true, height: h);
+
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                // Wrap in Begin/EndProperty for correct prefab override + undo handling
-                EditorGUI.BeginProperty(EditorGUILayout.GetControlRect(), new GUIContent(property.displayName), property);
+                // Proper prefab override / undo wrapping
+                EditorGUI.BeginProperty(rect, new GUIContent(property.displayName), property);
 
-                // Draw property without Unity's recursion
                 EditorGUI.BeginChangeCheck();
-                EditorGUILayout.PropertyField(property, includeChildren: false);
+                // Draw ONLY this node; children will be handled manually below
+                EditorGUI.PropertyField(rect, property, includeChildren: false);
                 if (EditorGUI.EndChangeCheck())
                 {
+                    // Commit changes immediately to keep iterator stable when we recurse
                     property.serializedObject.ApplyModifiedProperties();
                 }
 
                 EditorGUI.EndProperty();
+            } // end enabled scope for THIS property
 
-                // If children not expanded, stop here
-                if (!includeChildren || !property.hasVisibleChildren || !property.isExpanded)
-                    return;
+            // -------- Children (manual recursion through Naughty) --------
+            if (!includeChildren || !property.hasVisibleChildren || !property.isExpanded)
+                return;
 
-                // Manually recurse children
-                var iterator = property.Copy();
-                var end = iterator.GetEndProperty();
-                bool enterChildren = true;
+            int prevIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = prevIndent + 1; // visual hierarchy like Unity
 
-                while (iterator.NextVisible(enterChildren) && !SerializedProperty.EqualContents(iterator, end))
+            var iterator = property.Copy();
+            var end = iterator.GetEndProperty();
+            bool enterChildren = true;
+
+            while (iterator.NextVisible(enterChildren) && !SerializedProperty.EqualContents(iterator, end))
+            {
+                // Skip script reference or any other meta fields
+                if (iterator.name == "m_Script")
                 {
-                    if (iterator.name == "m_Script")
-                    {
-                        enterChildren = false;
-                        continue;
-                    }
-
-                    if (PropertyUtility.IsVisible(iterator))
-                    {
-                        PropertyField_Layout(iterator, includeChildren: true);
-                    }
-
                     enterChildren = false;
+                    continue;
                 }
+
+                // Each child goes through the same Naughty pipeline (child decides its own visibility/enabled)
+                PropertyField_Layout(iterator.Copy(), includeChildren: true);
+
+                // Move horizontally after the first step in this subtree
+                enterChildren = false;
             }
+
+            EditorGUI.indentLevel = prevIndent;
         }
-
-
 
         private static void DrawPropertyField(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren)
         {
