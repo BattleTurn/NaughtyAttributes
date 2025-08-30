@@ -37,17 +37,25 @@ namespace NaughtyAttributes.Editor
 
         public override void OnInspectorGUI()
         {
+            // NOTE [2025-08]: Always use the Naughty rendering path so children go through
+            // Naughty's drawers/validators/visibility checks as well.
+            serializedObject.Update();
+
             GetSerializedProperties(ref _serializedProperties);
 
-            bool anyNaughtyAttribute = _serializedProperties.Any(p => PropertyUtility.GetAttribute<INaughtyAttribute>(p) != null);
-            if (!anyNaughtyAttribute)
+            if (_serializedProperties != null)
             {
-                DrawDefaultInspector();
+                foreach (var prop in _serializedProperties)
+                {
+                    if (prop == null) continue;
+                    if (prop.name == "m_Script") continue; // skip script reference
+
+                    // Draw each top-level property via Naughty (children handled recursively inside)
+                    NaughtyEditorGUI.PropertyField_Layout(prop, includeChildren: true);
+                }
             }
-            else
-            {
-                DrawSerializedProperties();
-            }
+
+            serializedObject.ApplyModifiedProperties();
 
             DrawNonSerializedFields();
             DrawNativeProperties();

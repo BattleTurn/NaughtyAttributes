@@ -24,11 +24,65 @@ namespace NaughtyAttributes.Editor
             PropertyField_Implementation(rect, property, includeChildren, DrawPropertyField);
         }
 
+        /// <summary>
+        /// Draw a property and (optionally) its children through the Naughty pipeline.
+        /// IMPORTANT:
+        ///  - We DO NOT rely on Unity's built-in includeChildren recursion.
+        ///  - We draw the current property (so any CustomPropertyDrawer applies),
+        ///    then manually iterate visible children and feed each one back into this method.
+        /// Result:
+        ///  - Nested objects (serializable classes/structs, ScriptableObjects, etc.)
+        ///    get full Naughty processing without requiring [AllowNesting].
+        /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
-            Rect dummyRect = new Rect();
-            PropertyField_Implementation(dummyRect, property, includeChildren, DrawPropertyField_Layout);
+            if (property == null) return;
+            if (!PropertyUtility.IsVisible(property)) return;
+
+            bool enabled = PropertyUtility.IsEnabled(property);
+            using (new EditorGUI.DisabledScope(!enabled))
+            {
+                // Wrap in Begin/EndProperty for correct prefab override + undo handling
+                EditorGUI.BeginProperty(EditorGUILayout.GetControlRect(), new GUIContent(property.displayName), property);
+
+                // Draw property without Unity's recursion
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.PropertyField(property, includeChildren: false);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    property.serializedObject.ApplyModifiedProperties();
+                }
+
+                EditorGUI.EndProperty();
+
+                // If children not expanded, stop here
+                if (!includeChildren || !property.hasVisibleChildren || !property.isExpanded)
+                    return;
+
+                // Manually recurse children
+                var iterator = property.Copy();
+                var end = iterator.GetEndProperty();
+                bool enterChildren = true;
+
+                while (iterator.NextVisible(enterChildren) && !SerializedProperty.EqualContents(iterator, end))
+                {
+                    if (iterator.name == "m_Script")
+                    {
+                        enterChildren = false;
+                        continue;
+                    }
+
+                    if (PropertyUtility.IsVisible(iterator))
+                    {
+                        PropertyField_Layout(iterator, includeChildren: true);
+                    }
+
+                    enterChildren = false;
+                }
+            }
         }
+
+
 
         private static void DrawPropertyField(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren)
         {
