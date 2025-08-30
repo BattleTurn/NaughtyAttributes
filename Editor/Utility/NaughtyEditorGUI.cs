@@ -24,74 +24,241 @@ namespace NaughtyAttributes.Editor
         }
 
         /// <summary>
-        /// Draw a property (and optionally its children) through the Naughty pipeline.
-        /// We combine Layout (to reserve one line) with IMGUI (to draw into that line):
-        ///  - Reserve exactly one rect via EditorGUILayout.GetControlRect(height).
-        ///  - Wrap with BeginProperty/EndProperty to keep prefab overrides & undo working.
-        ///  - Draw THIS property only using EditorGUI.PropertyField(rect, ..., includeChildren:false).
-        ///  - Recurse manually into visible children so they also go through the Naughty pipeline.
-        /// This avoids extra blank spacing and keeps nested edits functional (no [AllowNesting] needed).
+        /// Draw a property and (optionally) its children using the Naughty pipeline.
+        /// No Unity built-in recursion is used; we recurse manually so nested members
+        /// get full Naughty behavior (callbacks, validators, extras).
         /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
-            if (property == null) return;
+            if (!ShouldDraw(property)) return;
 
-            // Visibility for THIS property only
-            if (!PropertyUtility.IsVisible(property))
-                return;
+            var (owner, field) = ResolveOwnerAndField(property);
 
-            // -------- Draw THIS property (no Unity recursion) --------
+            // 1) Draw THIS node (single line; no Unity recursion)
+            bool changed = DrawThisNode(property);
+
+            // 2) If changed → commit and fire OnValueChanged callbacks
+            if (changed)
+            {
+                property.serializedObject.ApplyModifiedProperties();
+                InvokeOnValueChanged(owner, field, property);
+            }
+
+            // 3) Validate THIS node and show a helpbox if invalid
+            ValidateThisNode(owner, field, property);
+
+            // 4) Manually recurse children (each child repeats steps 1–3)
+            if (!includeChildren || !property.hasVisibleChildren || !property.isExpanded) return;
+
+            int savedIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = savedIndent + 1;
+
+            IterateChildren(property, child =>
+            {
+                if (child.name == "m_Script") return;
+                PropertyField_Layout(child.Copy(), includeChildren: true);
+            });
+
+            // 5) After serialized children, draw nested extras (ShowNonSerializedField + Button)
+            DrawExtrasForContainer(property);
+
+            EditorGUI.indentLevel = savedIndent;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 0: Gate & resolution
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        private static bool ShouldDraw(SerializedProperty property)
+        {
+            if (property == null) return false;
+            if (!PropertyUtility.IsVisible(property)) return false;
+            return true;
+        }
+
+        private static (object owner, FieldInfo field) ResolveOwnerAndField(SerializedProperty property)
+        {
+            object owner = PropertyUtility.GetTargetObjectWithProperty(property);
+            FieldInfo fi = owner != null ? ReflectionUtility.GetField(owner, property.name) : null;
+            return (owner, fi);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 1: Draw THIS node (single line)
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Draws only this property (no recursion). Returns true if value changed.
+        /// Uses one reserved rect to avoid extra spacing.
+        /// </summary>
+        private static bool DrawThisNode(SerializedProperty property)
+        {
             bool enabled = PropertyUtility.IsEnabled(property);
 
-            // Reserve exactly one rect for this property (no extra line)
             float h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
             Rect rect = EditorGUILayout.GetControlRect(hasLabel: true, height: h);
 
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                // Proper prefab override / undo wrapping
                 EditorGUI.BeginProperty(rect, new GUIContent(property.displayName), property);
-
                 EditorGUI.BeginChangeCheck();
-                // Draw ONLY this node; children will be handled manually below
+
                 EditorGUI.PropertyField(rect, property, includeChildren: false);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    // Commit changes immediately to keep iterator stable when we recurse
-                    property.serializedObject.ApplyModifiedProperties();
-                }
 
+                bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndProperty();
-            } // end enabled scope for THIS property
+                return changed;
+            }
+        }
 
-            // -------- Children (manual recursion through Naughty) --------
-            if (!includeChildren || !property.hasVisibleChildren || !property.isExpanded)
-                return;
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 2: OnValueChanged
+        // ─────────────────────────────────────────────────────────────────────────────
 
-            int prevIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = prevIndent + 1; // visual hierarchy like Unity
+        private static void InvokeOnValueChanged(object owner, FieldInfo fi, SerializedProperty property)
+        {
+            if (owner == null || fi == null) return;
 
-            var iterator = property.Copy();
-            var end = iterator.GetEndProperty();
-            bool enterChildren = true;
-
-            while (iterator.NextVisible(enterChildren) && !SerializedProperty.EqualContents(iterator, end))
+            foreach (var a in fi.GetCustomAttributes(true))
             {
-                // Skip script reference or any other meta fields
-                if (iterator.name == "m_Script")
+                var at = a.GetType();
+                var name = at.Name;
+                if (name != "OnValueChanged" && name != "OnValueChangedAttribute") continue;
+
+                string cb = GetAttributeString(at, a, "CallbackName");
+                if (string.IsNullOrEmpty(cb)) continue;
+
+                MethodInfo mi =
+                    ReflectionUtility.GetMethod(owner, cb) ??
+                    owner.GetType().GetMethod(cb, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (mi == null) continue;
+
+                try
                 {
-                    enterChildren = false;
-                    continue;
+                    if (mi.GetParameters().Length == 1)
+                    {
+                        object current = PropertyUtility.GetTargetObjectOfProperty(property);
+                        mi.Invoke(owner, new[] { current });
+                    }
+                    else
+                    {
+                        mi.Invoke(owner, null);
+                    }
                 }
+                catch (Exception ex) { Debug.LogException(ex); }
+            }
+        }
 
-                // Each child goes through the same Naughty pipeline (child decides its own visibility/enabled)
-                PropertyField_Layout(iterator.Copy(), includeChildren: true);
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 3: ValidateInput
+        // ─────────────────────────────────────────────────────────────────────────────
 
-                // Move horizontally after the first step in this subtree
-                enterChildren = false;
+        private static void ValidateThisNode(object owner, FieldInfo fi, SerializedProperty property)
+        {
+            if (owner == null || fi == null) return;
+
+            var attr = fi.GetCustomAttributes(true)
+                         .FirstOrDefault(a =>
+                         {
+                             var n = a.GetType().Name;
+                             return n == "ValidateInput" || n == "ValidateInputAttribute";
+                         });
+
+            if (attr == null) return;
+
+            string cb = GetAttributeString(attr.GetType(), attr, "CallbackName");
+            string msg = GetAttributeString(attr.GetType(), attr, "Message");
+
+            bool isValid = true;
+
+            if (!string.IsNullOrEmpty(cb))
+            {
+                MethodInfo vm =
+                    ReflectionUtility.GetMethod(owner, cb) ??
+                    owner.GetType().GetMethod(cb, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (vm != null)
+                {
+                    try
+                    {
+                        object result;
+                        if (vm.GetParameters().Length == 1)
+                        {
+                            object current = PropertyUtility.GetTargetObjectOfProperty(property);
+                            result = vm.Invoke(owner, new[] { current });
+                        }
+                        else
+                        {
+                            result = vm.Invoke(owner, null);
+                        }
+
+                        if (result is bool b) isValid = b;
+                        else if (result is string s)
+                        {
+                            isValid = string.IsNullOrEmpty(s);
+                            if (!isValid && !string.IsNullOrEmpty(s)) msg = s;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        isValid = false;
+                        if (string.IsNullOrEmpty(msg)) msg = ex.Message;
+                    }
+                }
             }
 
-            EditorGUI.indentLevel = prevIndent;
+            if (!isValid)
+            {
+                Rect helpRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 2f);
+                EditorGUI.HelpBox(helpRect, string.IsNullOrEmpty(msg) ? "Validation failed" : msg, MessageType.Warning);
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 4: Recurse children
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        private static void IterateChildren(SerializedProperty parent, Action<SerializedProperty> drawChild)
+        {
+            var it = parent.Copy();
+            var end = it.GetEndProperty();
+            bool enterChildren = true;
+
+            while (it.NextVisible(enterChildren) && !SerializedProperty.EqualContents(it, end))
+            {
+                drawChild(it);
+                enterChildren = false; // horizontal traversal
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 5: Draw extras for nested containers
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        private static void DrawExtrasForContainer(SerializedProperty property)
+        {
+            // We draw extras based on the actual instance backing this node.
+            object instance = PropertyUtility.GetTargetObjectOfProperty(property);
+            if (instance == null) return;
+
+            // Slight indent so extras align like nested fields
+            int prev = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = prev + 1;
+
+            DrawNestedExtras(instance); // implemented elsewhere in this partial (ShowNonSerializedField + Button)
+
+            EditorGUI.indentLevel = prev;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Small helpers
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        private static string GetAttributeString(Type attrType, object attrInstance, string propName)
+        {
+            var p = attrType.GetProperty(propName, BindingFlags.Instance | BindingFlags.Public);
+            return p?.GetValue(attrInstance) as string;
         }
 
         private static void DrawPropertyField(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren)
@@ -388,6 +555,189 @@ namespace NaughtyAttributes.Editor
             if (logToConsole)
             {
                 DebugLogMessage(message, type, context);
+            }
+        }
+
+        /// <summary>
+        /// Minimal inline clamping for [MinValue] / [MaxValue] if no central ValidatorUtility exists.
+        /// Extend this as needed for your other validators.
+        /// </summary>
+        public static void ApplyBasicMinMaxValidation(SerializedProperty property)
+        {
+            // Try to read attributes off the backing FieldInfo
+            var target = PropertyUtility.GetTargetObjectWithProperty(property);
+            if (target == null) return;
+
+            var fi = ReflectionUtility.GetField(target, property.name);
+            if (fi == null) return;
+
+            var minAttr = fi.GetCustomAttribute<MinValueAttribute>(inherit: true);
+            var maxAttr = fi.GetCustomAttribute<MaxValueAttribute>(inherit: true);
+
+            if (minAttr == null && maxAttr == null) return;
+
+            float? min = minAttr?.MinValue;
+            float? max = maxAttr?.MaxValue;
+
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    {
+                        int v = property.intValue;
+                        if (min.HasValue) v = Mathf.Max(v, Mathf.RoundToInt(min.Value));
+                        if (max.HasValue) v = Mathf.Min(v, Mathf.RoundToInt(max.Value));
+                        if (v != property.intValue) property.intValue = v;
+                        break;
+                    }
+                case SerializedPropertyType.Float:
+                    {
+                        float v = property.floatValue;
+                        if (min.HasValue) v = Mathf.Max(v, min.Value);
+                        if (max.HasValue) v = Mathf.Min(v, max.Value);
+                        if (!Mathf.Approximately(v, property.floatValue)) property.floatValue = v;
+                        break;
+                    }
+                case SerializedPropertyType.Vector2:
+                    {
+                        Vector2 v = property.vector2Value;
+                        if (min.HasValue) v = Vector2.Max(v, new Vector2(min.Value, min.Value));
+                        if (max.HasValue) v = Vector2.Min(v, new Vector2(max.Value, max.Value));
+                        if (v != property.vector2Value) property.vector2Value = v;
+                        break;
+                    }
+                    // Add other types if needed
+            }
+        }
+
+        /// <summary>
+        /// Draw non-serialized fields and [Button] methods for a nested object instance/type.
+        /// Goal: mimic Unity's serialized look (same controls), but read-only.
+        /// Supports instance + static; const & readonly are shown as disabled controls.
+        /// </summary>
+        public static void DrawNestedExtras(object owner)
+        {
+            if (owner == null) return;
+
+            Type type = owner.GetType();
+
+            // ---- Non-serialized fields with [ShowNonSerializedField] ----
+            var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Static |
+                                        BindingFlags.Public | BindingFlags.NonPublic);
+
+            foreach (var fi in fields)
+            {
+                var showAttr = fi.GetCustomAttribute<ShowNonSerializedFieldAttribute>(inherit: true);
+                if (showAttr == null) continue;
+
+                bool isStatic = fi.IsStatic;
+                bool isConst = fi.IsLiteral && !fi.IsInitOnly; // const
+                bool isReadonly = fi.IsInitOnly;                  // readonly
+
+                object fieldOwner = isStatic ? null : owner;
+
+                object value = null;
+                try { value = fi.GetValue(fieldOwner); }
+                catch { /* ignore */ }
+
+                // Use Unity-like label; avoid badges so the row looks like a normal serialized field.
+                string label = ObjectNames.NicifyVariableName(fi.Name);
+
+                using (new EditorGUI.DisabledScope(true)) // render read-only
+                {
+                    DrawReadOnlyLikeSerialized(fi.FieldType, label, value);
+                }
+            }
+
+            // ---- [Button] methods (instance + static) ----
+            var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static |
+                                          BindingFlags.Public | BindingFlags.NonPublic);
+
+            foreach (var mi in methods)
+            {
+                var btn = mi.GetCustomAttribute<ButtonAttribute>(inherit: true);
+                if (btn == null) continue;
+                if (mi.GetParameters().Length != 0) continue;
+
+                string text = string.IsNullOrWhiteSpace(btn.Text)
+                                ? ObjectNames.NicifyVariableName(mi.Name)
+                                : btn.Text;
+
+                if (GUILayout.Button(text))
+                {
+                    var undoTarget = owner as UnityEngine.Object;
+                    if (undoTarget != null) Undo.RecordObject(undoTarget, $"Invoke {mi.Name}");
+
+                    try { mi.Invoke(mi.IsStatic ? null : owner, null); }
+                    catch (Exception ex) { Debug.LogException(ex); }
+
+                    if (undoTarget != null) EditorUtility.SetDirty(undoTarget);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Renders a value using the same widgets Unity uses for serialized fields,
+        /// but as a read-only control so it visually matches the Inspector style.
+        /// </summary>
+        private static void DrawReadOnlyLikeSerialized(Type t, string label, object value)
+        {
+            // Null or unknown → fallback to label
+            if (t == null)
+            {
+                EditorGUILayout.LabelField(label, value == null ? "<null>" : value.ToString());
+                return;
+            }
+
+            // Handle common primitives and Unity types
+            if (t == typeof(int))
+                EditorGUILayout.IntField(label, value is int iv ? iv : 0);
+            else if (t == typeof(float))
+                EditorGUILayout.FloatField(label, value is float fv ? fv : 0f);
+            else if (t == typeof(double))
+                EditorGUILayout.DoubleField(label, value is double dv ? dv : 0d);
+            else if (t == typeof(bool))
+                EditorGUILayout.Toggle(label, value is bool bv && bv);
+            else if (t == typeof(string))
+                EditorGUILayout.TextField(label, value as string ?? string.Empty);
+            else if (t.IsEnum)
+                EditorGUILayout.EnumPopup(label, value as Enum ?? (Enum)Activator.CreateInstance(t));
+
+            // Vectors / Colors / Rects
+            else if (t == typeof(Vector2))
+                EditorGUILayout.Vector2Field(label, value is Vector2 v2 ? v2 : default);
+            else if (t == typeof(Vector2Int))
+                EditorGUILayout.Vector2IntField(label, value is Vector2Int v2i ? v2i : default);
+            else if (t == typeof(Vector3))
+                EditorGUILayout.Vector3Field(label, value is Vector3 v3 ? v3 : default);
+            else if (t == typeof(Vector3Int))
+                EditorGUILayout.Vector3IntField(label, value is Vector3Int v3i ? v3i : default);
+            else if (t == typeof(Vector4))
+                EditorGUILayout.Vector4Field(label, value is Vector4 v4 ? v4 : default);
+            else if (t == typeof(Color))
+                EditorGUILayout.ColorField(label, value is Color c ? c : Color.white);
+            else if (t == typeof(Rect))
+                EditorGUILayout.RectField(label, value is Rect r ? r : default);
+            else if (t == typeof(Bounds))
+                EditorGUILayout.BoundsField(label, value is Bounds b ? b : default);
+
+            // Quaternions → show as Vector4 (x,y,z,w) to mimic serialized representation
+            else if (t == typeof(Quaternion))
+            {
+                var q = value is Quaternion qv ? qv : Quaternion.identity;
+                Vector4 qv4 = new Vector4(q.x, q.y, q.z, q.w);
+                EditorGUILayout.Vector4Field(label, qv4);
+            }
+
+            // UnityEngine.Object refs (Textures, Materials, ScriptableObjects, etc.)
+            else if (typeof(UnityEngine.Object).IsAssignableFrom(t))
+            {
+                var obj = value as UnityEngine.Object;
+                EditorGUILayout.ObjectField(label, obj, t, allowSceneObjects: false);
+            }
+            else
+            {
+                // Fallback for other types
+                EditorGUILayout.LabelField(label, value == null ? "<null>" : value.ToString());
             }
         }
 
