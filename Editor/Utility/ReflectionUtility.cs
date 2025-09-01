@@ -79,16 +79,19 @@ namespace NaughtyAttributes.Editor
 
         public static FieldInfo GetField(object target, string fieldName)
         {
+            if (target == null || string.IsNullOrEmpty(fieldName)) return null;  // <- guard
             return GetAllFields(target, f => f.Name.Equals(fieldName, StringComparison.Ordinal)).FirstOrDefault();
         }
 
         public static PropertyInfo GetProperty(object target, string propertyName)
         {
+            if (target == null || string.IsNullOrEmpty(propertyName)) return null; // <- guard
             return GetAllProperties(target, p => p.Name.Equals(propertyName, StringComparison.Ordinal)).FirstOrDefault();
         }
 
         public static MethodInfo GetMethod(object target, string methodName)
         {
+            if (target == null || string.IsNullOrEmpty(methodName)) return null; // <- guard
             return GetAllMethods(target, m => m.Name.Equals(methodName, StringComparison.Ordinal)).FirstOrDefault();
         }
 
