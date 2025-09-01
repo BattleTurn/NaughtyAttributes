@@ -44,13 +44,13 @@ namespace NaughtyAttributes.Editor
                 InvokeOnValueChanged(owner, field, property);
             }
 
-            // >>> ADD THIS: always enforce Min/Max after drawing THIS node
-            ApplyMinMaxAttributes(field, property);
+            // 3): always enforce Min/Max after drawing THIS node
+            ApplyMinMaxAttributes(property);
 
-            // 3) Validate THIS node ([ValidateInput])
+            // 4) Validate THIS node ([ValidateInput])
             ValidateThisNode(owner, field, property);
 
-            // 4) Handle children
+            // 5) Handle children
             if (!includeChildren || !property.isExpanded)
                 return;
 
@@ -330,62 +330,16 @@ namespace NaughtyAttributes.Editor
         }
 
         /// <summary>
-        /// Read a floating numeric from an attribute by trying a few common property names
-        /// (e.g., "Min", "MinValue", "Value"). Returns null if not found or not numeric.
-        /// </summary>
-        private static float? ReadNumericFromAttribute(object attr, params string[] propNames)
-        {
-            if (attr == null) return null;
-
-            var t = attr.GetType();
-            foreach (var n in propNames)
-            {
-                var p = t.GetProperty(n, BindingFlags.Instance | BindingFlags.Public);
-                if (p == null) continue;
-
-                object v = p.GetValue(attr);
-                if (v is float f) return f;
-                if (v is double d) return (float)d;
-                if (v is int i) return i;
-                if (v is long l) return l;
-                if (v is short s) return s;
-                if (v is uint ui) return ui;
-                if (v is ulong ul) return ul;
-            }
-            return null;
-        }
-
-        /// <summary>
         /// Apply [MinValue]/[MaxValue] to THIS property (ints, floats, Vector2/3/4, Vector2Int/3Int).
         /// Looks up attributes by name ("MinValue"/"MaxValue") to avoid namespace coupling.
         /// If a change occurs, writes back and ApplyModifiedProperties() immediately.
         /// </summary>
-        private static void ApplyMinMaxAttributes(System.Reflection.FieldInfo fi, SerializedProperty property)
+        private static void ApplyMinMaxAttributes(SerializedProperty property)
         {
-            if (fi == null || property == null) return;
+            if (property == null) return;
 
-            // Find attributes by simple name to be resilient to different namespaces
-            object minAttr = fi.GetCustomAttributes(true)
-                               .FirstOrDefault(a =>
-                               {
-                                   var n = a.GetType().Name;
-                                   return n == "MinValue" || n == "MinValueAttribute";
-                               });
-
-            object maxAttr = fi.GetCustomAttributes(true)
-                               .FirstOrDefault(a =>
-                               {
-                                   var n = a.GetType().Name;
-                                   return n == "MaxValue" || n == "MaxValueAttribute";
-                               });
-
-            if (minAttr == null && maxAttr == null) return;
-
-            float? min = ReadNumericFromAttribute(minAttr, "Min", "MinValue", "Value");
-            float? max = ReadNumericFromAttribute(maxAttr, "Max", "MaxValue", "Value");
-
-            // Nothing to clamp with
-            if (min == null && max == null) return;
+            MinValueAttribute minAttr = PropertyUtility.GetAttribute<MinValueAttribute>(property);
+            MaxValueAttribute maxAttr = PropertyUtility.GetAttribute<MaxValueAttribute>(property);
 
             bool changed = false;
 
@@ -393,58 +347,77 @@ namespace NaughtyAttributes.Editor
             {
                 case SerializedPropertyType.Integer:
                     {
-                        int v = property.intValue;
-                        if (min.HasValue) v = Mathf.Max(v, Mathf.RoundToInt(min.Value));
-                        if (max.HasValue) v = Mathf.Min(v, Mathf.RoundToInt(max.Value));
-                        if (v != property.intValue) { property.intValue = v; changed = true; }
+                        int value = property.intValue;
+                        if (maxAttr != null)
+                        {
+                            maxAttr.GetValidator().ValidateProperty(property);
+                        }
+                        if (minAttr != null)
+                        {
+                            minAttr.GetValidator().ValidateProperty(property);
+                        }
+
+                        if (value != property.intValue) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Float:
                     {
-                        float v = property.floatValue;
-                        if (min.HasValue) v = Mathf.Max(v, min.Value);
-                        if (max.HasValue) v = Mathf.Min(v, max.Value);
-                        if (!Mathf.Approximately(v, property.floatValue)) { property.floatValue = v; changed = true; }
+                        float value = property.floatValue;
+                        if (minAttr != null)
+                        {
+                            minAttr.GetValidator().ValidateProperty(property);
+                        }
+                        if (maxAttr != null)
+                        {
+                            maxAttr.GetValidator().ValidateProperty(property);
+                        }
+
+                        if (!Mathf.Approximately(value, property.floatValue)) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Vector2:
                     {
                         Vector2 v = property.vector2Value;
-                        if (min.HasValue) v = Vector2.Max(v, new Vector2(min.Value, min.Value));
-                        if (max.HasValue) v = Vector2.Min(v, new Vector2(max.Value, max.Value));
-                        if (v != property.vector2Value) { property.vector2Value = v; changed = true; }
+                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
+                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
+
+                        if (v != property.vector2Value) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Vector3:
                     {
-                        Vector3 v = property.vector3Value;
-                        if (min.HasValue) v = Vector3.Max(v, new Vector3(min.Value, min.Value, min.Value));
-                        if (max.HasValue) v = Vector3.Min(v, new Vector3(max.Value, max.Value, max.Value));
-                        if (v != property.vector3Value) { property.vector3Value = v; changed = true; }
+                        Vector3 value = property.vector3Value;
+                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
+                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
+
+                        if (value != property.vector3Value) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Vector4:
                     {
-                        Vector4 v = property.vector4Value;
-                        if (min.HasValue) v = Vector4.Max(v, new Vector4(min.Value, min.Value, min.Value, min.Value));
-                        if (max.HasValue) v = Vector4.Min(v, new Vector4(max.Value, max.Value, max.Value, max.Value));
-                        if (v != property.vector4Value) { property.vector4Value = v; changed = true; }
+                        Vector4 value = property.vector4Value;
+                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
+                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
+
+                        if (value != property.vector4Value) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Vector2Int:
                     {
-                        Vector2Int v = property.vector2IntValue;
-                        if (min.HasValue) v = Vector2Int.Max(v, new Vector2Int(Mathf.RoundToInt(min.Value), Mathf.RoundToInt(min.Value)));
-                        if (max.HasValue) v = Vector2Int.Min(v, new Vector2Int(Mathf.RoundToInt(max.Value), Mathf.RoundToInt(max.Value)));
-                        if (v != property.vector2IntValue) { property.vector2IntValue = v; changed = true; }
+                        Vector2Int value = property.vector2IntValue;
+                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
+                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
+
+                        if (value != property.vector2IntValue) { changed = true; }
                         break;
                     }
                 case SerializedPropertyType.Vector3Int:
                     {
-                        Vector3Int v = property.vector3IntValue;
-                        if (min.HasValue) v = Vector3Int.Max(v, new Vector3Int(Mathf.RoundToInt(min.Value), Mathf.RoundToInt(min.Value), Mathf.RoundToInt(min.Value)));
-                        if (max.HasValue) v = Vector3Int.Min(v, new Vector3Int(Mathf.RoundToInt(max.Value), Mathf.RoundToInt(max.Value), Mathf.RoundToInt(max.Value)));
-                        if (v != property.vector3IntValue) { property.vector3IntValue = v; changed = true; }
+                        Vector3Int value = property.vector3IntValue;
+                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
+                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
+
+                        if (value != property.vector3IntValue) { changed = true; }
                         break;
                     }
                     // Add more types if your repo needs (e.g., fixed buffers), but these cover common cases.
@@ -845,57 +818,6 @@ namespace NaughtyAttributes.Editor
             if (logToConsole)
             {
                 DebugLogMessage(message, type, context);
-            }
-        }
-
-        /// <summary>
-        /// Minimal inline clamping for [MinValue] / [MaxValue] if no central ValidatorUtility exists.
-        /// Extend this as needed for your other validators.
-        /// </summary>
-        public static void ApplyBasicMinMaxValidation(SerializedProperty property)
-        {
-            // Try to read attributes off the backing FieldInfo
-            var target = PropertyUtility.GetTargetObjectWithProperty(property);
-            if (target == null) return;
-
-            var fi = ReflectionUtility.GetField(target, property.name);
-            if (fi == null) return;
-
-            var minAttr = fi.GetCustomAttribute<MinValueAttribute>(inherit: true);
-            var maxAttr = fi.GetCustomAttribute<MaxValueAttribute>(inherit: true);
-
-            if (minAttr == null && maxAttr == null) return;
-
-            float? min = minAttr?.MinValue;
-            float? max = maxAttr?.MaxValue;
-
-            switch (property.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    {
-                        int v = property.intValue;
-                        if (min.HasValue) v = Mathf.Max(v, Mathf.RoundToInt(min.Value));
-                        if (max.HasValue) v = Mathf.Min(v, Mathf.RoundToInt(max.Value));
-                        if (v != property.intValue) property.intValue = v;
-                        break;
-                    }
-                case SerializedPropertyType.Float:
-                    {
-                        float v = property.floatValue;
-                        if (min.HasValue) v = Mathf.Max(v, min.Value);
-                        if (max.HasValue) v = Mathf.Min(v, max.Value);
-                        if (!Mathf.Approximately(v, property.floatValue)) property.floatValue = v;
-                        break;
-                    }
-                case SerializedPropertyType.Vector2:
-                    {
-                        Vector2 v = property.vector2Value;
-                        if (min.HasValue) v = Vector2.Max(v, new Vector2(min.Value, min.Value));
-                        if (max.HasValue) v = Vector2.Min(v, new Vector2(max.Value, max.Value));
-                        if (v != property.vector2Value) property.vector2Value = v;
-                        break;
-                    }
-                    // Add other types if needed
             }
         }
 

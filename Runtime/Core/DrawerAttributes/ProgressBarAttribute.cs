@@ -12,44 +12,40 @@ namespace NaughtyAttributes
         public Color Color { get; private set; }
         public string ColorValueName { get; private set; }
 
-        public ProgressBarAttribute(string name, float maxValue, string colorValueName)
+        public ProgressBarAttribute(string name, float maxValue, string colorValueName) : this(name, maxValue, (object)colorValueName)
+        {
+        }
+
+        public ProgressBarAttribute(string name, string maxValueName, string colorValueName) : this(name, maxValueName, (object)colorValueName)
+        {
+        }
+
+        public ProgressBarAttribute(string name, float maxValue, float r = 0, float g = 0, float b = 0, float a = 1) : this(name, maxValue, new Color(r, g, b, a))
+        {
+        }
+
+        public ProgressBarAttribute(string name, string maxValueName, float r = 0, float g = 0, float b = 0, float a = 1) : this(name, maxValueName, new Color(r, g, b, a))
+        {
+        }
+
+        private ProgressBarAttribute(string name, float maxValue, object colorValue = null)
         {
             Name = name;
             MaxValue = maxValue;
-            if (colorValueName.Contains('#'))
-            {
-                Color = NaughtyColorUtility.GetColor(colorValueName, Color.white);
-                return;
-            }
-
-            ColorValueName = colorValueName;
+            if (NaughtyColorUtility.TryParse(colorValue, out var c))
+                Color = c;
+            else if (colorValue is string s)
+                ColorValueName = s;
         }
 
-        public ProgressBarAttribute(string name, string maxValueName, string colorValueName)
+        private ProgressBarAttribute(string name, string maxValueName, object colorValue = null)
         {
             Name = name;
             MaxValueName = maxValueName;
-            if (colorValueName.Contains('#'))
-            {
-                Color = NaughtyColorUtility.GetColor(colorValueName, Color.white);
-                return;
-            }
-
-            ColorValueName = colorValueName;
-        }
-
-        public ProgressBarAttribute(string name, float maxValue, float r = 0, float g = 0, float b = 0, float a = 1)
-        {
-            Name = name;
-            MaxValue = maxValue;
-            Color = new Color(r, g, b, a);
-        }
-
-        public ProgressBarAttribute(string name, string maxValueName, float r = 0, float g = 0, float b = 0, float a = 1)
-        {
-            Name = name;
-            MaxValueName = maxValueName;
-            Color = new Color(r, g, b, a);
+            if (NaughtyColorUtility.TryParse(colorValue, out var c))
+                Color = c;
+            else if (colorValue is string s)
+                ColorValueName = s;
         }
 
         public ProgressBarAttribute(float maxValue, string colorValueName)

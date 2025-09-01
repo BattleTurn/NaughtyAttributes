@@ -7,7 +7,7 @@ using UnityEngine;
 namespace NaughtyAttributes.Editor
 {
     [CanEditMultipleObjects]
-    [CustomEditor(typeof(UnityEngine.Object), true)]
+    [CustomEditor(typeof(Object), true)]
     public class NaughtyInspector : UnityEditor.Editor
     {
         private List<SerializedProperty> _serializedProperties = new List<SerializedProperty>();
@@ -48,7 +48,14 @@ namespace NaughtyAttributes.Editor
                 foreach (var prop in _serializedProperties)
                 {
                     if (prop == null) continue;
-                    if (prop.name == "m_Script") continue; // skip script reference
+                    if (prop.name == "m_Script")
+                    {
+                        using (new EditorGUI.DisabledScope(disabled: true))
+                        {
+                            EditorGUILayout.PropertyField(prop);
+                        }
+                        continue;
+                    }
 
                     // Draw each top-level property via Naughty (children handled recursively inside)
                     NaughtyEditorGUI.PropertyField_Layout(prop, includeChildren: true);

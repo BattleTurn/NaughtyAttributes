@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Reflection;
 using UnityEditor;
 
 namespace NaughtyAttributes.Editor
@@ -9,45 +10,53 @@ namespace NaughtyAttributes.Editor
         {
             MaxValueAttribute maxValueAttribute = PropertyUtility.GetAttribute<MaxValueAttribute>(property);
 
-            if (property.propertyType == SerializedPropertyType.Integer)
+            object target = PropertyUtility.GetTargetObjectWithProperty(property);
+
+            AttributeUtility.FieldPropertyCallbackHandle(property, maxValueAttribute.MaxValueName, (value) =>
             {
-                if (property.intValue > maxValueAttribute.MaxValue)
+                ValidatorUtility.ClampValue(float.Parse(value.ToString()), GreaterThan, property);
+            },
+            () =>
+            {
+                MethodInfo maxValueCallback = ReflectionUtility.GetMethod(target, maxValueAttribute.MaxValueName);
+
+                if (maxValueCallback != null &&
+                    (maxValueCallback.ReturnType == typeof(int) || maxValueCallback.ReturnType == typeof(float)))
                 {
-                    property.intValue = (int)maxValueAttribute.MaxValue;
+                    UseCallbackHandle(maxValueAttribute, property, maxValueCallback, target);
+
                 }
-            }
-            else if (property.propertyType == SerializedPropertyType.Float)
-            {
-                if (property.floatValue > maxValueAttribute.MaxValue)
+                else
                 {
-                    property.floatValue = maxValueAttribute.MaxValue;
+                    UseMaxValueHandle(maxValueAttribute, property);
                 }
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector2)
+            });
+        }
+
+        private void UseCallbackHandle(MaxValueAttribute maxValueAttribute, SerializedProperty property, MethodInfo maxValueCallback, object target)
+        {
+            ParameterInfo[] callbackParameters = maxValueCallback.GetParameters();
+
+            Action actionCallback = () =>
             {
-                property.vector2Value = Vector2.Min(property.vector2Value, new Vector2(maxValueAttribute.MaxValue, maxValueAttribute.MaxValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector3)
-            {
-                property.vector3Value = Vector3.Min(property.vector3Value, new Vector3(maxValueAttribute.MaxValue, maxValueAttribute.MaxValue, maxValueAttribute.MaxValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector4)
-            {
-                property.vector4Value = Vector4.Min(property.vector4Value, new Vector4(maxValueAttribute.MaxValue, maxValueAttribute.MaxValue, maxValueAttribute.MaxValue, maxValueAttribute.MaxValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector2Int)
-            {
-                property.vector2IntValue = Vector2Int.Min(property.vector2IntValue, new Vector2Int((int)maxValueAttribute.MaxValue, (int)maxValueAttribute.MaxValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector3Int)
-            {
-                property.vector3IntValue = Vector3Int.Min(property.vector3IntValue, new Vector3Int((int)maxValueAttribute.MaxValue, (int)maxValueAttribute.MaxValue, (int)maxValueAttribute.MaxValue));
-            }
-            else
-            {
-                string warning = maxValueAttribute.GetType().Name + " can be used only on int, float, Vector or VectorInt fields";
-                Debug.LogWarning(warning, property.serializedObject.targetObject);
-            }
+                var value = maxValueCallback.Invoke(target, null);
+                ValidatorUtility.ClampValue(float.Parse(value.ToString()), GreaterThan, property);
+            };
+
+            string warning = $"\"{maxValueAttribute.GetType().Name}\" needs a callback with float or int return type and an optional single parameter of the same type as the field";
+
+            AttributeUtility.HandleAttributeCallback(target, property, maxValueCallback, callbackParameters, actionCallback, warning);
+        }
+
+
+        private void UseMaxValueHandle(MaxValueAttribute maxValueAttribute, SerializedProperty property)
+        {
+            ValidatorUtility.ClampValue(maxValueAttribute.MaxValue, GreaterThan, property);
+        }
+
+        private bool GreaterThan(float a, float b)
+        {
+            return a > b;
         }
     }
 }

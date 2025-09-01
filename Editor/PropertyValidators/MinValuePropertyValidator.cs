@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Reflection;
 using UnityEditor;
 
 namespace NaughtyAttributes.Editor
@@ -9,45 +10,53 @@ namespace NaughtyAttributes.Editor
         {
             MinValueAttribute minValueAttribute = PropertyUtility.GetAttribute<MinValueAttribute>(property);
 
-            if (property.propertyType == SerializedPropertyType.Integer)
+            object target = PropertyUtility.GetTargetObjectWithProperty(property);
+
+            AttributeUtility.FieldPropertyCallbackHandle(property, minValueAttribute.MinValueName, (value) =>
             {
-                if (property.intValue < minValueAttribute.MinValue)
+                ValidatorUtility.ClampValue(float.Parse(value.ToString()), LesserThan, property);
+            },
+            () =>
+            {
+                MethodInfo minValueCallback = ReflectionUtility.GetMethod(target, minValueAttribute.MinValueName);
+
+                if (minValueCallback != null &&
+                    (minValueCallback.ReturnType == typeof(int) || minValueCallback.ReturnType == typeof(float)))
                 {
-                    property.intValue = (int)minValueAttribute.MinValue;
+                    UseCallbackHandle(minValueAttribute, property, minValueCallback, target);
+
                 }
-            }
-            else if (property.propertyType == SerializedPropertyType.Float)
-            {
-                if (property.floatValue < minValueAttribute.MinValue)
+                else
                 {
-                    property.floatValue = minValueAttribute.MinValue;
+                    UseMinValueHandle(minValueAttribute, property);
                 }
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector2)
-            {
-                property.vector2Value = Vector2.Max(property.vector2Value, new Vector2(minValueAttribute.MinValue, minValueAttribute.MinValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector3)
-            {
-                property.vector3Value = Vector3.Max(property.vector3Value, new Vector3(minValueAttribute.MinValue, minValueAttribute.MinValue, minValueAttribute.MinValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector4)
-            {
-                property.vector4Value = Vector4.Max(property.vector4Value, new Vector4(minValueAttribute.MinValue, minValueAttribute.MinValue, minValueAttribute.MinValue, minValueAttribute.MinValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector2Int)
-            {
-                property.vector2IntValue = Vector2Int.Max(property.vector2IntValue, new Vector2Int((int)minValueAttribute.MinValue, (int)minValueAttribute.MinValue));
-            }
-            else if (property.propertyType == SerializedPropertyType.Vector3Int)
-            {
-                property.vector3IntValue = Vector3Int.Max(property.vector3IntValue, new Vector3Int((int)minValueAttribute.MinValue, (int)minValueAttribute.MinValue, (int)minValueAttribute.MinValue));
-            }
-            else
-            {
-                string warning = minValueAttribute.GetType().Name + " can be used only on int, float, Vector or VectorInt fields";
-                Debug.LogWarning(warning, property.serializedObject.targetObject);
-            }
+            });
         }
+
+        private void UseCallbackHandle(MinValueAttribute minValueAttribute, SerializedProperty property, MethodInfo minValueCallback, object target)
+        {
+            ParameterInfo[] callbackParameters = minValueCallback.GetParameters();
+
+            Action actionCallback = () =>
+            {
+                var value = minValueCallback.Invoke(target, null);
+                ValidatorUtility.ClampValue(float.Parse(value.ToString()), LesserThan, property);
+            };
+
+            string warning = $"\"{minValueAttribute.GetType().Name}\" needs a callback with float or int return type and an optional single parameter of the same type as the field";
+
+            AttributeUtility.HandleAttributeCallback(target, property, minValueCallback, callbackParameters, actionCallback, warning);
+        }
+
+        private void UseMinValueHandle(MinValueAttribute minValueAttribute, SerializedProperty property)
+        {
+            ValidatorUtility.ClampValue(minValueAttribute.MinValue, LesserThan, property);
+        }
+
+        private bool LesserThan(float a, float b)
+        {
+            return a < b;
+        }
+
     }
 }

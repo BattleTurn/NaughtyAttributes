@@ -15,5 +15,17 @@ namespace NaughtyAttributes
 
             return fallback; // fallback default, e.g., Color.white
         }
+
+        public static bool TryParse(object input, out Color c)
+        {
+            if (input is Color col) { c = col; return true; }
+            if (input is string s && ColorUtility.TryParseHtmlString(s, out var parsed))
+            {
+                c = parsed; return true;
+            }
+            c = Color.white;
+            return false;
+        }
+
     }
 }
