@@ -11,23 +11,18 @@ namespace NaughtyAttributes.Test
         [EnumFlags] public ShowIfEnumFlag enum2;
 
         [ShowIf(EConditionOperator.And, "show1", "show2")]
-        [ReorderableList]
         public int[] showIfAll;
 
         [ShowIf(EConditionOperator.Or, "show1", "show2")]
-        [ReorderableList]
         public int[] showIfAny;
 
         [ShowIf("enum1", ShowIfEnum.Case0)]
-        [ReorderableList]
         public int[] showIfEnum;
 
         [ShowIf("enum2", ShowIfEnumFlag.Flag0)]
-        [ReorderableList]
         public int[] showIfEnumFlag;
 
         [ShowIf("enum2", ShowIfEnumFlag.Flag0 | ShowIfEnumFlag.Flag1)]
-        [ReorderableList]
         public int[] showIfEnumFlagMulti;
 
         public ShowIfNest1 nest1;

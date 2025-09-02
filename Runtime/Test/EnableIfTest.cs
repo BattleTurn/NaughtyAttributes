@@ -11,23 +11,18 @@ namespace NaughtyAttributes.Test
         [EnumFlags] public EnableIfEnumFlag enum2;
 
         [EnableIf(EConditionOperator.And, "enable1", "enable2")]
-        [ReorderableList]
         public int[] enableIfAll;
 
         [EnableIf(EConditionOperator.Or, "enable1", "enable2")]
-        [ReorderableList]
         public int[] enableIfAny;
 
         [EnableIf("enum1", EnableIfEnum.Case0)]
-        [ReorderableList]
         public int[] enableIfEnum;
 
         [EnableIf("enum2", EnableIfEnumFlag.Flag0)]
-        [ReorderableList]
         public int[] enableIfEnumFlag;
 
         [EnableIf("enum2", EnableIfEnumFlag.Flag0 | EnableIfEnumFlag.Flag1)]
-        [ReorderableList]
         public int[] enableIfEnumFlagMulti;
 
         public EnableIfNest1 nest1;
@@ -68,7 +63,7 @@ namespace NaughtyAttributes.Test
         public EnableIfNest2 nest2;
     }
 
-    [System.Serializable]
+    [Serializable]
     public class EnableIfNest2
     {
         public bool enable1;

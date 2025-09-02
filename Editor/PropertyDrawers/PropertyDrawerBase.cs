@@ -14,13 +14,6 @@ namespace NaughtyAttributes.Editor
                 return;
             }
 
-            // Validate
-            ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
-            foreach (var validatorAttribute in validatorAttributes)
-            {
-                validatorAttribute.GetValidator().ValidateProperty(property);
-            }
-
             // Check if enabled and draw
             EditorGUI.BeginChangeCheck();
             bool enabled = PropertyUtility.IsEnabled(property);

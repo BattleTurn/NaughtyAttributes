@@ -7,6 +7,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
+using Object = UnityEngine.Object;
+
 namespace NaughtyAttributes.Editor
 {
     public static class NaughtyEditorGUI
@@ -32,28 +34,37 @@ namespace NaughtyAttributes.Editor
         {
             if (!ShouldDraw(property)) return;
 
+            // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
+            if (TryDrawSpecialCase(property)) return;
+
+            // Arrays/Lists (except string): draw with Unity's default so we get foldout + Size + elements.
+            // If a special-case drawer (e.g., [ReorderableList]) exists, TryDrawSpecialCase above already handled it.
+            if (property.isArray && property.propertyType != SerializedPropertyType.String)
+            {
+                float propHeight = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+                Rect propRect = EditorGUILayout.GetControlRect(true, propHeight);
+                ReorderableEditorGUI.CreateReorderableList(propRect, property);
+                // EditorArrayLayout(property);
+                return; // stop here; don't run our manual recursion for this field
+            }
+
             var (owner, field) = ResolveOwnerAndField(property);
 
-            // 1) draw THIS node (single line; no Unity recursion)
-            bool changed = DrawThisNode(property);
-
-            // 2) changed → commit and fire OnValueChanged
-            if (changed)
+            // 1) Vẽ CHÍNH field (header/foldout) – NO recursion
+            bool changedByUser = DrawThisNode(property);
+            if (changedByUser)
             {
                 property.serializedObject.ApplyModifiedProperties();
                 InvokeOnValueChanged(owner, field, property);
             }
 
-            // 3): always enforce Min/Max after drawing THIS node
-            ApplyMinMaxAttributes(property);
+            // 2) Run validators once (Min/Max…)
+            RunValidatorsOnce(property);
 
-            // 4) Validate THIS node ([ValidateInput])
-            ValidateThisNode(owner, field, property);
+            // 3) Children
+            if (!includeChildren || !property.isExpanded) return;
 
-            // 5) Handle children
-            if (!includeChildren || !property.isExpanded)
-                return;
-
+            // >>> Arrays/Lists trước – vì chúng có cách vẽ riêng
             if (IsArrayLike(property))
             {
                 DrawArrayChildren(property);
@@ -177,90 +188,91 @@ namespace NaughtyAttributes.Editor
         // Step 3: ValidateInput
         // ─────────────────────────────────────────────────────────────────────────────
 
-        private static void ValidateThisNode(object owner, FieldInfo fi, SerializedProperty property)
+        /// <summary>
+        /// Run all ValidatorAttributes on this property exactly once.
+        /// Returns true if ANY validator actually modified the property's value (so we can Apply once).
+        /// </summary>
+        private static bool RunValidatorsOnce(SerializedProperty property)
         {
-            if (owner == null || fi == null) return;
+            var validators = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
+            bool modified = false;
 
-            var attr = fi.GetCustomAttributes(true)
-                         .FirstOrDefault(a =>
-                         {
-                             var n = a.GetType().Name;
-                             return n == "ValidateInput" || n == "ValidateInputAttribute";
-                         });
-
-            if (attr == null) return;
-
-            string cb = GetAttrString(attr.GetType(), attr, "CallbackName");
-            string msg = GetAttrString(attr.GetType(), attr, "Message");
-            bool isValid = true;
-
-            if (!string.IsNullOrEmpty(cb))
+            foreach (var attr in validators)
             {
-                MethodInfo vm =
-                    ReflectionUtility.GetMethod(owner, cb) ??
-                    owner.GetType().GetMethod(cb, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-                if (vm != null)
-                {
-                    try
-                    {
-                        object result;
-                        if (vm.GetParameters().Length == 1)
-                        {
-                            object current = PropertyUtility.GetTargetObjectOfProperty(property);
-                            result = vm.Invoke(owner, new[] { current });
-                        }
-                        else
-                        {
-                            result = vm.Invoke(owner, null);
-                        }
-
-                        if (result is bool b) isValid = b;
-                        else if (result is string s)
-                        {
-                            isValid = string.IsNullOrEmpty(s);
-                            if (!isValid && !string.IsNullOrEmpty(s)) msg = s;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        isValid = false;
-                        if (string.IsNullOrEmpty(msg)) msg = ex.Message;
-                    }
-                }
+                // IMPORTANT: validators must return true ONLY when they WRITE a new value to 'property'
+                modified |= attr.GetValidator().ValidateProperty(property);
             }
 
-            if (!isValid)
-            {
-                Rect helpRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 2f);
-                EditorGUI.HelpBox(helpRect, string.IsNullOrEmpty(msg) ? "Validation failed" : msg, MessageType.Warning);
-            }
+            if (modified)
+                property.serializedObject.ApplyModifiedProperties();
+
+            return modified;
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
         // Step 4A: Arrays/lists
         // ─────────────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Draw arrays/lists in a reliable way:
+        ///  - Header row was already drawn by DrawThisNode (foldout).
+        ///  - If expanded, draw "Size" then each element through the Naughty pipeline.
+        ///  - If Unity gives us something odd (managed refs, etc.), fallback to default drawing.
+        /// </summary>
         private static void DrawArrayChildren(SerializedProperty arrayProp)
         {
-            int savedIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = savedIndent + 1;
+            // Not expanded? Nothing to show.
+            if (!arrayProp.isExpanded) return;
 
-            // Draw size first (Unity convention)
-            var sizeProp = arrayProp.FindPropertyRelative("Array.size");
-            if (sizeProp != null)
+            // If the field has a special-case drawer (e.g., [ReorderableList]), it should have been
+            // handled earlier by TryDrawSpecialCase() and we shouldn't be here.
+            // If you want to be extra safe, you can early-return when attribute exists.
+
+            int prevIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = prevIndent + 1;
+
+            try
             {
-                PropertyField_Layout(sizeProp, includeChildren: false);
-            }
+                // 1) Draw "Size" like Unity does
+                SerializedProperty sizeProp = arrayProp.FindPropertyRelative("Array.size");
+                if (sizeProp != null)
+                {
+                    // Use our pipeline for the size as well (no includeChildren needed)
+                    PropertyField_Layout(sizeProp, includeChildren: false);
+                }
 
-            // Draw each element with full Naughty pipeline
-            for (int i = 0; i < arrayProp.arraySize; i++)
+                // 2) Draw each element via Naughty pipeline
+                int count = arrayProp.arraySize;
+
+                // If Unity can't give us elements properly, bail out to default drawing.
+                // (This protects against odd cases like managed references / corrupted data.)
+                bool fallbackNeeded = false;
+
+                for (int i = 0; i < count; i++)
+                {
+                    SerializedProperty element = arrayProp.GetArrayElementAtIndex(i);
+                    if (element == null)
+                    {
+                        fallbackNeeded = true;
+                        break;
+                    }
+
+                    // Important: pass includeChildren:true so nested attributes inside element still work
+                    PropertyField_Layout(element, includeChildren: true);
+                }
+
+                if (fallbackNeeded)
+                {
+                    // Safe fallback: let Unity render the whole thing with its built-in recursion.
+                    // This guarantees the user still sees the list even if we can't traverse it.
+                    EditorGUILayout.PropertyField(arrayProp, includeChildren: true);
+                    return;
+                }
+            }
+            finally
             {
-                var element = arrayProp.GetArrayElementAtIndex(i);
-                PropertyField_Layout(element, includeChildren: true);
+                EditorGUI.indentLevel = prevIndent;
             }
-
-            EditorGUI.indentLevel = savedIndent;
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
@@ -318,7 +330,7 @@ namespace NaughtyAttributes.Editor
                 if (GUILayout.Button(label))
                 {
                     var target = mi.IsStatic ? null : instance;
-                    var uobj = target as UnityEngine.Object;
+                    var uobj = target as Object;
                     if (uobj != null) Undo.RecordObject(uobj, $"Invoke {mi.Name}");
 
                     try { mi.Invoke(target, null); }
@@ -329,104 +341,31 @@ namespace NaughtyAttributes.Editor
             }
         }
 
-        /// <summary>
-        /// Apply [MinValue]/[MaxValue] to THIS property (ints, floats, Vector2/3/4, Vector2Int/3Int).
-        /// Looks up attributes by name ("MinValue"/"MaxValue") to avoid namespace coupling.
-        /// If a change occurs, writes back and ApplyModifiedProperties() immediately.
-        /// </summary>
-        private static void ApplyMinMaxAttributes(SerializedProperty property)
+        // Catch and draw any SpecialCaseDrawerAttribute (e.g., ReorderableList) and return true if handled.
+        private static bool TryDrawSpecialCase(SerializedProperty property)
         {
-            if (property == null) return;
+            // Respect visibility (consistent with your SpecialCasePropertyDrawerBase.OnGUI)
+            if (!PropertyUtility.IsVisible(property))
+                return true; // visible=false means "handled" by skipping draw
 
-            MinValueAttribute minAttr = PropertyUtility.GetAttribute<MinValueAttribute>(property);
-            MaxValueAttribute maxAttr = PropertyUtility.GetAttribute<MaxValueAttribute>(property);
+            // Collect special-case attributes on this field
+            var specials = PropertyUtility.GetAttributes<SpecialCaseDrawerAttribute>(property);
+            if (specials == null || specials.Length == 0)
+                return false;
 
-            bool changed = false;
-
-            switch (property.propertyType)
+            // Pick first matching special-case drawer and let it render
+            foreach (var attr in specials)
             {
-                case SerializedPropertyType.Integer:
-                    {
-                        int value = property.intValue;
-                        if (maxAttr != null)
-                        {
-                            maxAttr.GetValidator().ValidateProperty(property);
-                        }
-                        if (minAttr != null)
-                        {
-                            minAttr.GetValidator().ValidateProperty(property);
-                        }
-
-                        if (value != property.intValue) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Float:
-                    {
-                        float value = property.floatValue;
-                        if (minAttr != null)
-                        {
-                            minAttr.GetValidator().ValidateProperty(property);
-                        }
-                        if (maxAttr != null)
-                        {
-                            maxAttr.GetValidator().ValidateProperty(property);
-                        }
-
-                        if (!Mathf.Approximately(value, property.floatValue)) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Vector2:
-                    {
-                        Vector2 v = property.vector2Value;
-                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
-                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
-
-                        if (v != property.vector2Value) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Vector3:
-                    {
-                        Vector3 value = property.vector3Value;
-                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
-                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
-
-                        if (value != property.vector3Value) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Vector4:
-                    {
-                        Vector4 value = property.vector4Value;
-                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
-                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
-
-                        if (value != property.vector4Value) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Vector2Int:
-                    {
-                        Vector2Int value = property.vector2IntValue;
-                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
-                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
-
-                        if (value != property.vector2IntValue) { changed = true; }
-                        break;
-                    }
-                case SerializedPropertyType.Vector3Int:
-                    {
-                        Vector3Int value = property.vector3IntValue;
-                        if (minAttr != null) minAttr.GetValidator().ValidateProperty(property);
-                        if (maxAttr != null) maxAttr.GetValidator().ValidateProperty(property);
-
-                        if (value != property.vector3IntValue) { changed = true; }
-                        break;
-                    }
-                    // Add more types if your repo needs (e.g., fixed buffers), but these cover common cases.
+                var drawer = attr.GetDrawer(); // mapped in SpecialCaseDrawerAttributeExtensions
+                if (drawer != null)
+                {
+                    // Use layout path: passing default Rect triggers DoLayoutList() in ReorderableListPropertyDrawer
+                    drawer.OnGUI(default, property);
+                    return true;
+                }
             }
 
-            if (changed)
-            {
-                property.serializedObject.ApplyModifiedProperties();
-            }
+            return false;
         }
 
         private static IEnumerable<FieldInfo> GetFieldsInDeclarationOrder(Type type)
@@ -529,11 +468,6 @@ namespace NaughtyAttributes.Editor
             EditorGUI.PropertyField(rect, property, label, includeChildren);
         }
 
-        private static void DrawPropertyField_Layout(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren)
-        {
-            EditorGUILayout.PropertyField(property, label, includeChildren);
-        }
-
         private static void PropertyField_Implementation(Rect rect, SerializedProperty property, bool includeChildren, PropertyFieldFunction propertyFieldFunction)
         {
             SpecialCaseDrawerAttribute specialCaseAttribute = PropertyUtility.GetAttribute<SpecialCaseDrawerAttribute>(property);
@@ -581,6 +515,31 @@ namespace NaughtyAttributes.Editor
             float indentLength = indentRect.x - sourceRect.x;
 
             return indentLength;
+        }
+
+        private static Object GetAssignableObject(Object obj, SerializedProperty listProp)
+        {
+            var listType = PropertyUtility.GetPropertyType(listProp);
+            var elementType = ReflectionUtility.GetListElementType(listType);
+            if (elementType == null || obj == null) return null;
+
+            var objType = obj.GetType();
+            if (elementType.IsAssignableFrom(objType)) return obj;
+
+            if (objType == typeof(GameObject))
+            {
+                if (typeof(Transform).IsAssignableFrom(elementType))
+                {
+                    var tr = ((GameObject)obj).transform;
+                    if (elementType == typeof(RectTransform)) return tr as RectTransform;
+                    return tr;
+                }
+                else if (typeof(MonoBehaviour).IsAssignableFrom(elementType))
+                {
+                    return ((GameObject)obj).GetComponent(elementType);
+                }
+            }
+            return null;
         }
 
         public static void BeginBoxGroup_Layout(string label = "")

@@ -16,13 +16,6 @@ namespace NaughtyAttributes.Editor
                 return;
             }
 
-            // Validate
-            ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
-            foreach (var validatorAttribute in validatorAttributes)
-            {
-                validatorAttribute.GetValidator().ValidateProperty(property);
-            }
-
             // Check if enabled and draw
             EditorGUI.BeginChangeCheck();
             bool enabled = PropertyUtility.IsEnabled(property);
@@ -56,7 +49,6 @@ namespace NaughtyAttributes.Editor
         static SpecialCaseDrawerAttributeExtensions()
         {
             _drawersByAttributeType = new Dictionary<Type, SpecialCasePropertyDrawerBase>();
-            _drawersByAttributeType[typeof(ReorderableListAttribute)] = ReorderableListPropertyDrawer.Instance;
         }
 
         public static SpecialCasePropertyDrawerBase GetDrawer(this SpecialCaseDrawerAttribute attr)

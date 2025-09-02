@@ -32,7 +32,7 @@ namespace NaughtyAttributes.Editor
 
         protected virtual void OnDisable()
         {
-            ReorderableListPropertyDrawer.Instance.ClearCache();
+            ReorderableEditorGUI.ClearCache();
         }
 
         public override void OnInspectorGUI()

@@ -6,7 +6,7 @@ namespace NaughtyAttributes.Editor
 {
     public abstract class PropertyValidatorBase
     {
-        public abstract void ValidateProperty(SerializedProperty property);
+        public abstract bool ValidateProperty(SerializedProperty property);
     }
 
     public static class ValidatorAttributeExtensions

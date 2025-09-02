@@ -6,57 +6,50 @@ namespace NaughtyAttributes.Editor
 {
     public class MinValuePropertyValidator : PropertyValidatorBase
     {
-        public override void ValidateProperty(SerializedProperty property)
+        public override bool ValidateProperty(SerializedProperty property)
         {
-            MinValueAttribute minValueAttribute = PropertyUtility.GetAttribute<MinValueAttribute>(property);
-
+            MinValueAttribute a = PropertyUtility.GetAttribute<MinValueAttribute>(property);
             object target = PropertyUtility.GetTargetObjectWithProperty(property);
 
-            AttributeUtility.FieldPropertyCallbackHandle(property, minValueAttribute.MinValueName, (value) =>
-            {
-                ValidatorUtility.ClampValue(float.Parse(value.ToString()), LesserThan, property);
-            },
-            () =>
-            {
-                MethodInfo minValueCallback = ReflectionUtility.GetMethod(target, minValueAttribute.MinValueName);
-
-                if (minValueCallback != null &&
-                    (minValueCallback.ReturnType == typeof(int) || minValueCallback.ReturnType == typeof(float)))
+            return AttributeUtility.FieldPropertyCallbackHandle(
+                property, a.MinValueName,
+                value => ValidatorUtility.ClampValue<MinValueAttribute>(Convert.ToSingle(value), LesserThan, property),
+                () =>
                 {
-                    UseCallbackHandle(minValueAttribute, property, minValueCallback, target);
+                    MethodInfo cb = ReflectionUtility.GetMethod(target, a.MinValueName);
 
-                }
-                else
-                {
-                    UseMinValueHandle(minValueAttribute, property);
-                }
-            });
+                    if (cb != null && (cb.ReturnType == typeof(int) || cb.ReturnType == typeof(float)))
+                    {
+                        string warn;
+                        bool changed = AttributeUtility.HandleAttributeCallback(
+                            target, property, cb, cb.GetParameters(),
+                            invokeAndClamp: () =>
+                            {
+                                var v = cb.Invoke(target, null);
+                                return ValidatorUtility.ClampValue<MinValueAttribute>(Convert.ToSingle(v), LesserThan, property);
+                            },
+                            out warn);
+
+                        if (!string.IsNullOrEmpty(warn))
+                            NaughtyEditorGUI.HelpBox_Layout(warn, MessageType.Warning, context: property.serializedObject.targetObject);
+
+                        return changed;
+                    }
+                    else
+                    {
+                        return UseMinValueHandle(a, property);
+                    }
+                });
         }
 
-        private void UseCallbackHandle(MinValueAttribute minValueAttribute, SerializedProperty property, MethodInfo minValueCallback, object target)
+        private bool UseMinValueHandle(MinValueAttribute a, SerializedProperty p)
         {
-            ParameterInfo[] callbackParameters = minValueCallback.GetParameters();
-
-            Action actionCallback = () =>
-            {
-                var value = minValueCallback.Invoke(target, null);
-                ValidatorUtility.ClampValue(float.Parse(value.ToString()), LesserThan, property);
-            };
-
-            string warning = $"\"{minValueAttribute.GetType().Name}\" needs a callback with float or int return type and an optional single parameter of the same type as the field";
-
-            AttributeUtility.HandleAttributeCallback(target, property, minValueCallback, callbackParameters, actionCallback, warning);
+            // Direct literal min
+            return ValidatorUtility.ClampValue<MinValueAttribute>(a.MinValue, LesserThan, p);
         }
 
-        private void UseMinValueHandle(MinValueAttribute minValueAttribute, SerializedProperty property)
-        {
-            ValidatorUtility.ClampValue(minValueAttribute.MinValue, LesserThan, property);
-        }
+        private bool LesserThan(float a, float b) => a < b;
 
-        private bool LesserThan(float a, float b)
-        {
-            return a < b;
-        }
 
     }
 }

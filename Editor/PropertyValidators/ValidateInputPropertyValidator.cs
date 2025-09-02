@@ -1,12 +1,13 @@
 using UnityEditor;
 using System.Reflection;
 using System;
+using UnityEngine;
 
 namespace NaughtyAttributes.Editor
 {
     public class ValidateInputPropertyValidator : PropertyValidatorBase
     {
-        public override void ValidateProperty(SerializedProperty property)
+        public override bool ValidateProperty(SerializedProperty property)
         {
             ValidateInputAttribute validateInputAttribute = PropertyUtility.GetAttribute<ValidateInputAttribute>(property);
             object target = PropertyUtility.GetTargetObjectWithProperty(property);
@@ -20,7 +21,8 @@ namespace NaughtyAttributes.Editor
 
                 if (callbackParameters.Length == 0)
                 {
-                    if (!(bool)validationCallback.Invoke(target, null))
+                    bool result = (bool)validationCallback.Invoke(target, null);
+                    if (!result)
                     {
                         if (string.IsNullOrEmpty(validateInputAttribute.Message))
                         {
@@ -32,7 +34,10 @@ namespace NaughtyAttributes.Editor
                             NaughtyEditorGUI.HelpBox_Layout(
                                 validateInputAttribute.Message, MessageType.Error, context: property.serializedObject.targetObject);
                         }
+                        return false;
                     }
+
+                    return true;
                 }
                 else if (callbackParameters.Length == 1)
                 {
@@ -42,7 +47,8 @@ namespace NaughtyAttributes.Editor
 
                     if (fieldType == parameterType)
                     {
-                        if (!(bool)validationCallback.Invoke(target, new object[] { fieldInfo.GetValue(target) }))
+                        bool result = (bool)validationCallback.Invoke(target, new object[] { fieldInfo.GetValue(target) });
+                        if (!result)
                         {
                             if (string.IsNullOrEmpty(validateInputAttribute.Message))
                             {
@@ -54,7 +60,10 @@ namespace NaughtyAttributes.Editor
                                 NaughtyEditorGUI.HelpBox_Layout(
                                     validateInputAttribute.Message, MessageType.Error, context: property.serializedObject.targetObject);
                             }
+                            return false;
                         }
+
+                        return true;
                     }
                     else
                     {
@@ -71,6 +80,7 @@ namespace NaughtyAttributes.Editor
                     NaughtyEditorGUI.HelpBox_Layout(warning, MessageType.Warning, context: property.serializedObject.targetObject);
                 }
             }
+            return false;
         }
     }
 }
