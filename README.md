@@ -1,8 +1,19 @@
-# Add New Features: 
-+ Button Attribute with parameter
-+ OnValidate Attribute
-  
+# Fork additions and fixes
+
+- New: Button attribute supports parameters
+- New: OnValidate attribute
+- ReorderableList improvements: respects indent level, proper drag handle, drag-to-reorder works, header drop-to-add items, handle hidden when collapsed
+## BUGS
+- Fix: Constants and static non-serialized fields now appear in the correct “Non-Serialized” section and order (no longer out of place)
+- Fix: Meta attributes render inside nested serializable classes/structs when using the Naughty pipeline (NaughtyInspector or NaughtyEditorGUI.PropertyField_Layout). Use [AllowNesting] where required
+
+Tip: To make all meta attributes work everywhere (including nested types), inherit from NaughtyInspector or call NaughtyEditorGUI.PropertyField_Layout instead of EditorGUILayout.PropertyField in your custom editors.
+
 # NaughtyAttributes
+
+## Roadmap / TODO
+
+- TableList attribute: a table-style view in the Inspector (columns, headers, per-row actions). Implementation will respect the upstream API/design and include clear credit to the original author (D. Brizov) with links to the upstream repository.
 [![Unity 2019.4+](https://img.shields.io/badge/unity-2019.4%2B-blue.svg)](https://unity3d.com/get-unity/download)
 [![openupm](https://img.shields.io/npm/v/com.dbrizov.naughtyattributes?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.dbrizov.naughtyattributes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://github.com/dbrizov/NaughtyAttributes/blob/master/LICENSE)
