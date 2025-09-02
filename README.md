@@ -5,7 +5,7 @@
 - ReorderableList improvements: respects indent level, proper drag handle, drag-to-reorder works, header drop-to-add items, handle hidden when collapsed
 ## BUGS
 - Fix: Constants and static non-serialized fields now appear in the correct “Non-Serialized” section and order (no longer out of place)
-- Fix: Meta attributes render inside nested serializable classes/structs when using the Naughty pipeline (NaughtyInspector or NaughtyEditorGUI.PropertyField_Layout). Use [AllowNesting] where required
+- Fix/Feature: Meta attributes auto-apply inside nested serializable classes/structs when using the Naughty pipeline (NaughtyInspector or NaughtyEditorGUI.PropertyField_Layout). [AllowNesting] is no longer required in most cases
 
 Tip: To make all meta attributes work everywhere (including nested types), inherit from NaughtyInspector or call NaughtyEditorGUI.PropertyField_Layout instead of EditorGUILayout.PropertyField in your custom editors.
 
@@ -14,6 +14,7 @@ Tip: To make all meta attributes work everywhere (including nested types), inher
 ## Roadmap / TODO
 
 - TableList attribute: a table-style view in the Inspector (columns, headers, per-row actions). Implementation will respect the upstream API/design and include clear credit to the original author (D. Brizov) with links to the upstream repository.
+
 [![Unity 2019.4+](https://img.shields.io/badge/unity-2019.4%2B-blue.svg)](https://unity3d.com/get-unity/download)
 [![openupm](https://img.shields.io/npm/v/com.dbrizov.naughtyattributes?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.dbrizov.naughtyattributes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://github.com/dbrizov/NaughtyAttributes/blob/master/LICENSE)
@@ -55,24 +56,25 @@ NaughtyAttributes is an open-source project that I am developing in my free time
 
 ## Special Attributes
 
-### AllowNesting
-This attribute must be used in some cases when you want meta attributes to work inside serializable nested structs or classes.
-You can check in which cases you need to use it [here](https://dbrizov.github.io/na-docs/attributes/special_attributes/allow_nesting.html).
+### AllowNesting (compat)
+In this fork, meta attributes auto-apply inside serializable nested structs/classes when drawn via the Naughty pipeline
+(`NaughtyInspector` or `NaughtyEditorGUI.PropertyField_Layout`). You generally no longer need `[AllowNesting]`.
+If you use Unity’s default drawers or third-party custom editors that bypass the Naughty pipeline, you may still need `[AllowNesting]`.
 
 ```csharp
 public class NaughtyComponent : MonoBehaviour
 {
-    public MyStruct myStruct;
+	public MyStruct myStruct;
 }
 
 [System.Serializable]
 public struct MyStruct
 {
-    public bool enableFlag;
+	public bool enableFlag;
 
-    [EnableIf("enableFlag")]
-    [AllowNesting] // Because it's nested we need to explicitly allow nesting
-    public int integer;
+	// AllowNesting not required when using the Naughty pipeline
+	[EnableIf("enableFlag")]
+	public int integer;
 }
 ```
 
