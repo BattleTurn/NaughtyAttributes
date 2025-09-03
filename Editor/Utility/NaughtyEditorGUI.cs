@@ -50,13 +50,13 @@ namespace NaughtyAttributes.Editor
 
             var (owner, field) = ResolveOwnerAndField(property);
 
-            // 1) Vẽ CHÍNH field (header/foldout) – NO recursion
             bool changedByUser = DrawThisNode(property);
             if (changedByUser)
             {
                 property.serializedObject.ApplyModifiedProperties();
-                InvokeOnValueChanged(owner, field, property);
             }
+
+            RunMetaOnce(property);
 
             // 2) Run validators once (Min/Max…)
             RunValidatorsOnce(property);
@@ -185,7 +185,73 @@ namespace NaughtyAttributes.Editor
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
-        // Step 3: ValidateInput
+        // Step 3: MetaAttributes
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Run all ValidatorAttributes on this property exactly once.
+        /// Returns true if ANY validator actually modified the property's value (so we can Apply once).
+        /// </summary>
+        private static void RunMetaOnce(SerializedProperty property)
+        {
+            var metas = PropertyUtility.GetAttributes<MetaAttribute>(property);
+
+            foreach (var attr in metas)
+            {
+                switch (attr)
+                {
+                    case FoldoutAttribute:
+                        // Handle foldout attributes
+                        Debug.Log("Foldout attribute found: " + typeof(FoldoutAttribute));
+                        break;
+                    case BoxGroupAttribute:
+                        // Handle group attributes
+                        Debug.Log("Group attribute found: " + typeof(BoxGroupAttribute));
+                        break;
+                    case EnableIfAttribute:
+                        // Handle enable-if attributes
+                        Debug.Log("EnableIf attribute found: " + typeof(EnableIfAttribute));
+                        break;
+                    case DisableIfAttribute:
+                        // Handle disable-if attributes
+                        Debug.Log("DisableIf attribute found: " + typeof(DisableIfAttribute));
+                        break;
+                    case ShowIfAttribute:
+                        // Handle show-if attributes
+                        Debug.Log("ShowIf attribute found: " + typeof(ShowIfAttribute));
+                        break;
+                    case ReadOnlyAttribute:
+                        // Handle read-only attributes
+                        Debug.Log("ReadOnly attribute found: " + typeof(ReadOnlyAttribute));
+                        break;
+                    case HideIfAttribute:
+                        // Handle hide-if attributes
+                        Debug.Log("HideIf attribute found: " + typeof(HideIfAttribute));
+                        break;
+                    case LabelAttribute:
+                        // Handle label attributes
+                        Debug.Log("Label attribute found: " + typeof(LabelAttribute));
+                        break;
+                    case OnValidateAttribute:
+                        // Handle on-validate attributes
+                        Debug.Log("OnValidate attribute found: " + typeof(OnValidateAttribute));
+                        break;
+                    case OnValueChangedAttribute:
+                        // Handle on-value-changed attributes
+                        Debug.Log("OnValueChanged attribute found: " + typeof(OnValueChangedAttribute));
+                        break;
+
+                    // Add cases for other meta attribute types as needed
+                }
+
+                // IMPORTANT: validators must return true ONLY when they WRITE a new value to 'property'
+                attr.GetValidator().ValidateMetaProperty(property);
+            }
+            property.serializedObject.ApplyModifiedProperties();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Step 4: ValidateAttributes
         // ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -210,7 +276,7 @@ namespace NaughtyAttributes.Editor
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
-        // Step 4A: Arrays/lists
+        // Step 5: Arrays/lists
         // ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -485,27 +551,27 @@ namespace NaughtyAttributes.Editor
                 }
 
                 // Validate
-                ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
-                foreach (var validatorAttribute in validatorAttributes)
-                {
-                    validatorAttribute.GetValidator().ValidateProperty(property);
-                }
+                // ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
+                // foreach (var validatorAttribute in validatorAttributes)
+                // {
+                //     validatorAttribute.GetValidator().ValidateProperty(property);
+                // }
 
-                // Check if enabled and draw
-                EditorGUI.BeginChangeCheck();
-                bool enabled = PropertyUtility.IsEnabled(property);
+                // // Check if enabled and draw
+                // EditorGUI.BeginChangeCheck();
+                // bool enabled = PropertyUtility.IsEnabled(property);
 
-                using (new EditorGUI.DisabledScope(disabled: !enabled))
-                {
-                    propertyFieldFunction.Invoke(rect, property, PropertyUtility.GetLabel(property), includeChildren);
-                }
+                // using (new EditorGUI.DisabledScope(disabled: !enabled))
+                // {
+                //     propertyFieldFunction.Invoke(rect, property, PropertyUtility.GetLabel(property), includeChildren);
+                // }
 
-                // Call OnValueChanged callbacks
-                if (EditorGUI.EndChangeCheck())
-                {
-                    PropertyUtility.CallOnValueChangedCallbacks(property);
-                    PropertyUtility.CallOnValidateCallbacks(property);
-                }
+                // // Call OnValueChanged callbacks
+                // if (EditorGUI.EndChangeCheck())
+                // {
+                //     PropertyUtility.CallOnValueChangedCallbacks(property);
+                //     PropertyUtility.CallOnValidateCallbacks(property);
+                // }
             }
         }
 
