@@ -27,10 +27,7 @@ namespace NaughtyAttributes.Editor
             {
                 reorderableList = new ReorderableList(so, arrayProp, true, true, true, true)
                 {
-                    drawHeaderCallback = (Rect r) =>
-                    {
-                        DrawHeader(arrayProp, r);
-                    },
+                    drawHeaderCallback = (Rect r) => { DrawHeader(arrayProp, r); },
 
                     drawElementCallback = (Rect r, int index, bool isActive, bool isFocused) =>
                     {
@@ -73,16 +70,17 @@ namespace NaughtyAttributes.Editor
             reorderableList = _arrayLists[key];
             reorderableList.draggable = arrayProp.isExpanded;
 
-            float listHeight = reorderableList.GetHeight();
-            rect = EditorGUILayout.GetControlRect(false, listHeight);
-            rect = EditorGUI.IndentedRect(rect);
-
+            // If caller passes default, reserve exact height and indent to align with surrounding properties
             if (rect == default)
             {
-                reorderableList.DoLayoutList();
+                float listHeight = reorderableList.GetHeight();
+                Rect rr = EditorGUILayout.GetControlRect(false, listHeight);
+                rr = EditorGUI.IndentedRect(rr);
+                reorderableList.DoList(rr);
             }
             else
             {
+                // Non-layout path when caller already has a rect
                 reorderableList.DoList(rect);
             }
         }
@@ -94,9 +92,13 @@ namespace NaughtyAttributes.Editor
 
         private static void DrawHeader(SerializedProperty arrayProp, Rect r)
         {
-            Rect rect = EditorGUILayout.GetControlRect(true, r.height);
-            // Toggle foldout on the serialized array itself
-            Rect foldRect = new Rect(rect.x + 16, r.y, r.width, r.height);
+            // Use the rect provided by ReorderableList (already aligned with current indent)
+            // Slightly smaller inset for nested properties to pull header a bit outward
+            bool isNested = arrayProp.depth > 0;
+            float arrowInset = isNested ? -(4f * arrayProp.depth) : 11f;
+            float arrowSize = EditorGUIUtility.singleLineHeight;
+            float arrowY = r.y + (r.height - arrowSize) * 0.5f;
+            Rect foldRect = new Rect(r.x + arrowInset, arrowY, 0, r.height);
 
             bool lastExpanded = arrayProp.isExpanded;
             arrayProp.isExpanded = EditorGUI.Foldout(foldRect, arrayProp.isExpanded, GUIContent.none, true);
@@ -106,7 +108,10 @@ namespace NaughtyAttributes.Editor
                 InternalEditorUtility.RepaintAllViews();
             }
 
-            Rect labelRect = new Rect(foldRect.x, r.y, r.width, r.height);
+            // Label sits just right of the arrow
+            const float labelGap = 6f;
+            float labelX = foldRect.xMax + labelGap;
+            Rect labelRect = new Rect(labelX, r.y, r.width - (labelX - r.x), r.height);
             EditorGUI.LabelField(labelRect, $"{arrayProp.displayName}: {arrayProp.arraySize}");
 
         }

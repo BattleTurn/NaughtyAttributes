@@ -4,6 +4,15 @@ namespace NaughtyAttributes.Test
 {
     public class FoldoutTest : MonoBehaviour
     {
+        [System.Serializable]
+        public sealed class NestedClass
+        {
+            [Foldout("Nested Ints")]
+            public int nestedInt0;
+            [Foldout("Nested Ints")]
+            public int nestedInt1;
+        }
+
         [Foldout("Integers")]
         public int int0;
         [Foldout("Integers")]
@@ -28,5 +37,13 @@ namespace NaughtyAttributes.Test
         public Transform trans0;
         [Foldout("Transforms")]
         public Transform trans1;
+
+        [Foldout("Nested Classes")]
+        [SerializeField]
+        public NestedClass nestedClass0;
+
+        [Foldout("Nested Classes")]
+        [SerializeField]
+        public NestedClass nestedClass1;
     }
 }

@@ -34,35 +34,34 @@ namespace NaughtyAttributes.Editor
         /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
-            if (!IsVisibleByMeta(property)) return;
+            // One-pass meta processing: visibility, grouping, enabled
+            var meta = MetaAttributeExtensions.ProcessAllMetas(property,
+                allowFoldoutGroup: _suppressFoldoutHandlingDepth == 0,
+                allowBoxGroup: _suppressBoxGroupHandlingDepth == 0);
+            if (!meta.visible) return;
 
             // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
             if (TryDrawSpecialCase(property)) return;
 
-            // Foldout groups: first property in a group draws the foldout + children and consumes the group
-            if (_suppressFoldoutHandlingDepth == 0 && HandleFoldoutGroup(property)) return;
-            // Box groups: similar handling
-            if (_suppressBoxGroupHandlingDepth == 0 && HandleBoxGroup(property)) return;
+            if (meta.consumedByGroup) return; // group already drew content
 
-            // Arrays/Lists (except string): draw with Unity's default so we get foldout + Size + elements.
-            // If a special-case drawer (e.g., [ReorderableList]) exists, TryDrawSpecialCase above already handled it.
+            // Arrays/Lists (except string): draw with our ReorderableList helper in layout mode.
+            // Let the list compute its own height; don't pre-reserve a control rect here.
             if (property.isArray && property.propertyType != SerializedPropertyType.String)
             {
-                float propHeight = EditorGUI.GetPropertyHeight(property, includeChildren: false);
-                Rect propRect = EditorGUILayout.GetControlRect(true, propHeight);
-                ReorderableEditorGUI.CreateReorderableList(propRect, property);
+                ReorderableEditorGUI.CreateReorderableList(default, property);
                 // EditorArrayLayout(property);
                 return; // stop here; don't run our manual recursion for this field
             }
 
             var (owner, field) = ResolveOwnerAndField(property);
 
-            bool enabled = IsEnabledByMeta(property);
+            bool enabled = meta.enabled;
             bool changedByUser = DrawThisNode(property, enabled);
             if (changedByUser)
             {
                 property.serializedObject.ApplyModifiedProperties();
-                RunAfterChangeMeta(property);
+                MetaAttributeExtensions.RunAfterChangeCallbacks(property);
             }
 
             // 2) Run validators once (Min/Max…)
@@ -149,16 +148,15 @@ namespace NaughtyAttributes.Editor
         private static bool IsVisibleByMeta(SerializedProperty property)
         {
             if (property == null) return false;
-            // Defaults to visible when no attribute found
-            var showValidator = new ShowIfMetaPropertyValidatorBase();
-            return showValidator.ValidateMetaProperty(property);
-        }
-
-        private static bool IsEnabledByMeta(SerializedProperty property)
-        {
-            if (property == null) return false;
-            var enableValidator = new EnableIfMetaPropertyValidatorBase();
-            return enableValidator.ValidateMetaProperty(property);
+            // If a ShowIf-like meta exists, resolve its validator via MetaAttributeExtensions
+            var showAttr = PropertyUtility.GetAttribute<ShowIfAttributeBase>(property);
+            if (showAttr != null)
+            {
+                var validator = showAttr.GetValidator();
+                return validator != null && validator.ValidateMetaProperty(property);
+            }
+            // Visible by default when no ShowIf
+            return true;
         }
 
         private static (object owner, FieldInfo field) ResolveOwnerAndField(SerializedProperty property)
@@ -196,60 +194,6 @@ namespace NaughtyAttributes.Editor
                 EditorGUI.EndProperty();
                 return changed;
             }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // Step 2: OnValueChanged
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        private static void InvokeOnValueChanged(object owner, FieldInfo fi, SerializedProperty property)
-        {
-            if (owner == null || fi == null) return;
-
-            foreach (var a in fi.GetCustomAttributes(true))
-            {
-                var at = a.GetType();
-                var name = at.Name;
-                if (name != "OnValueChanged" && name != "OnValueChangedAttribute") continue;
-
-                string cb = GetAttrString(at, a, "CallbackName");
-                if (string.IsNullOrEmpty(cb)) continue;
-
-                MethodInfo mi =
-                    ReflectionUtility.GetMethod(owner, cb) ??
-                    owner.GetType().GetMethod(cb, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-                if (mi == null) continue;
-
-                try
-                {
-                    if (mi.GetParameters().Length == 1)
-                    {
-                        object current = PropertyUtility.GetTargetObjectOfProperty(property);
-                        mi.Invoke(owner, new[] { current });
-                    }
-                    else
-                    {
-                        mi.Invoke(owner, null);
-                    }
-                }
-                catch (Exception ex) { Debug.LogException(ex); }
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // Step 3: MetaAttributes
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Run all ValidatorAttributes on this property exactly once.
-        /// Returns true if ANY validator actually modified the property's value (so we can Apply once).
-        /// </summary>
-        private static void RunAfterChangeMeta(SerializedProperty property)
-        {
-            // Only callbacks that care about changes
-            new OnValueChangedMetaPropertyValidator().ValidateMetaProperty(property);
-            new OnValidateMetaPropertyValidator().ValidateMetaProperty(property);
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
@@ -442,8 +386,9 @@ namespace NaughtyAttributes.Editor
             var fold = PropertyUtility.GetAttribute<FoldoutAttribute>(property);
             if (fold == null) return false;
 
-            // Let the validator render the group (only first field in group will actually draw)
-            new FoldoutMetaPropertyValidator().ValidateMetaProperty(property);
+            // Let the mapped validator render the group (first field draws)
+            var v = fold.GetValidator();
+            v?.ValidateMetaProperty(property);
             return true;
         }
 
@@ -452,7 +397,8 @@ namespace NaughtyAttributes.Editor
             var box = PropertyUtility.GetAttribute<BoxGroupAttribute>(property);
             if (box == null) return false;
 
-            new BoxGroupMetaPropertyValidator().ValidateMetaProperty(property);
+            var v = box.GetValidator();
+            v?.ValidateMetaProperty(property);
             return true;
         }
 
