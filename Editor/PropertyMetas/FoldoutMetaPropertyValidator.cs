@@ -20,37 +20,64 @@ namespace NaughtyAttributes.Editor
             if (target == null) return false;
 
             string groupName = fold.Name ?? string.Empty;
+            string containerPath = GetContainerPath(property);
 
-            // Collect all visible properties that share this group name, preserving inspector order
-            var group = new List<SerializedProperty>();
+            // Collect contiguous blocks of properties with same name+container
+            List<List<SerializedProperty>> blocks = new List<List<SerializedProperty>>();
+            List<SerializedProperty> current = null;
             using (var it = so.GetIterator())
             {
                 if (it.NextVisible(true))
                 {
                     do
                     {
-                        var p = so.FindProperty(it.name);
+                        var p = it.Copy();
                         if (p == null) continue;
                         var a = PropertyUtility.GetAttribute<FoldoutAttribute>(p);
-                        if (a != null && a.Name == groupName)
+                        bool match = a != null && a.Name == groupName && PropertyUtility.IsVisible(p) && GetContainerPath(p) == containerPath;
+                        if (match)
                         {
-                            if (PropertyUtility.IsVisible(p))
-                                group.Add(p.Copy());
+                            if (current == null) current = new List<SerializedProperty>();
+                            current.Add(p.Copy());
+                        }
+                        else
+                        {
+                            if (current != null)
+                            {
+                                blocks.Add(current);
+                                current = null;
+                            }
                         }
                     }
                     while (it.NextVisible(false));
                 }
             }
+            if (current != null) blocks.Add(current);
 
-            if (group.Count == 0)
-                return false; // nothing to draw
+            // Find the block that contains this property
+            List<SerializedProperty> group = null;
+            foreach (var b in blocks)
+            {
+                for (int i = 0; i < b.Count; i++)
+                {
+                    if (b[i].propertyPath == property.propertyPath)
+                    {
+                        group = b;
+                        break;
+                    }
+                }
+                if (group != null) break;
+            }
 
-            // Only the FIRST property in the group draws the foldout + children; others are skipped
-            if (property.name != group[0].name)
-                return false; // handled by skipping duplicate draw
+            if (group == null || group.Count == 0)
+                return false;
+
+            // Draw only for the first property in this contiguous block
+            if (property.propertyPath != group[0].propertyPath)
+                return false;
 
             int id = target.GetInstanceID();
-            string stateKey = id + ".NA.Foldout." + groupName;
+            string stateKey = id + ".NA.Foldout." + groupName + "|" + containerPath + "|" + group[0].propertyPath;
             if (!s_states.TryGetValue(stateKey, out var saved))
             {
                 saved = new SavedBool(stateKey, false);
@@ -61,28 +88,31 @@ namespace NaughtyAttributes.Editor
             var helpStyle = EditorStyles.helpBox;
             EditorGUILayout.BeginVertical(helpStyle);
 
-            // RL-style header with foldout functionality, header background flush with inner box
+            // RL-style header with foldout functionality; keep visuals flush but respect inner padding for content
             const float headerHeight = 20f;
             Rect headerRect = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
-            headerRect.x -= helpStyle.padding.left;
-            headerRect.width += helpStyle.padding.left + helpStyle.padding.right;
-            headerRect.y -= helpStyle.padding.top;
+            // Stretch background to the box edges
+            Rect headerBgRect = headerRect;
+            headerBgRect.x -= helpStyle.padding.left;
+            headerBgRect.width += helpStyle.padding.left + helpStyle.padding.right;
+            headerBgRect.y -= helpStyle.padding.top;
 
             // Draw header background using RL Header style if available
             var rlHeader = GUI.skin.FindStyle("RL Header");
             if (rlHeader != null)
             {
-                GUI.Label(headerRect, GUIContent.none, rlHeader);
+                GUI.Label(headerBgRect, GUIContent.none, rlHeader);
             }
             else
             {
-                Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 1f) : new Color(0.80f, 0.80f, 0.80f, 1f);
-                EditorGUI.DrawRect(headerRect, bg);
+                Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 0.95f) : new Color(0.80f, 0.80f, 0.80f, 1f);
+                EditorGUI.DrawRect(headerBgRect, bg);
             }
 
-            // Foldout arrow — inset further inside the header
-            float arrowW = 0f;
-            Rect arrowRect = new Rect(headerRect.x + 16f, headerRect.y + (headerRect.height - EditorGUIUtility.singleLineHeight) * 0.5f,
+            // Foldout arrow — keep inside the inner padding of the box group
+            float arrowW = 14f;
+            float innerLeft = headerRect.x; // within helpBox inner area
+            Rect arrowRect = new Rect(innerLeft + 12f, headerRect.y + (headerRect.height - EditorGUIUtility.singleLineHeight) * 0.5f,
                 arrowW, EditorGUIUtility.singleLineHeight);
             bool newValue = EditorGUI.Foldout(arrowRect, saved.Value, GUIContent.none, true);
             if (newValue != saved.Value) saved.Value = newValue;
@@ -100,10 +130,10 @@ namespace NaughtyAttributes.Editor
             for (int i = 0; i < group.Count; i++)
             {
                 var gp = group[i];
-                if (gp.name == "m_Script" || gp.name == property.name) continue;
+                if (gp.name == "m_Script") continue;
                 drawableCount++;
             }
-            var labelRect = new Rect(arrowRect.xMax, headerRect.y, headerRect.width - (arrowRect.width + 16f), headerRect.height);
+            var labelRect = new Rect(arrowRect.xMax + 6f, headerRect.y, headerRect.width - (arrowRect.xMax - headerRect.x) - 12f, headerRect.height);
             GUIStyle headerLabel = EditorStyles.boldLabel;
             var content = new GUIContent(string.IsNullOrEmpty(groupName) ? $": {drawableCount}" : $"{groupName}: {drawableCount}");
             headerLabel.alignment = TextAnchor.MiddleLeft;
@@ -113,26 +143,40 @@ namespace NaughtyAttributes.Editor
 
             if (saved.Value)
             {
-                foreach (var gp in group)
+                int savedIndent = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = savedIndent + 1; // indent inner content so nested arrows live inside the box
+                try
                 {
-                    if (gp.name == "m_Script")
+                    foreach (var gp in group)
                     {
-                        using (new EditorGUI.DisabledScope(true))
+                        if (gp.name == "m_Script")
                         {
-                            EditorGUILayout.PropertyField(gp);
+                            using (new EditorGUI.DisabledScope(true))
+                            {
+                                EditorGUILayout.PropertyField(gp);
+                            }
+                            continue;
                         }
-                        continue;
+
+                        // Draw each grouped property (including owner) via Naughty pipeline, suppressing foldout regrouping
+                        NaughtyEditorGUI.PropertyField_Layout_IgnoreFoldout(gp, includeChildren: true);
                     }
-
-                    if (gp.name == property.name) // skip drawing the owner itself to prevent recursion
-                        continue;
-
-            // Draw each grouped property via Naughty pipeline (recursively) ignoring foldout regrouping
-                    NaughtyEditorGUI.PropertyField_Layout_IgnoreFoldout(gp, includeChildren: true);
+                }
+                finally
+                {
+                    EditorGUI.indentLevel = savedIndent;
                 }
             }
         EditorGUILayout.EndVertical();
             return false;
+        }
+
+        private static string GetContainerPath(SerializedProperty p)
+        {
+            if (p == null) return string.Empty;
+            var path = p.propertyPath;
+            int dot = path.LastIndexOf('.');
+            return dot >= 0 ? path.Substring(0, dot) : string.Empty;
         }
     }
 }

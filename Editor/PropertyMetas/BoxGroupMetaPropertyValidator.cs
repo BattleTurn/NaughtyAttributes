@@ -18,6 +18,7 @@ namespace NaughtyAttributes.Editor
             if (target == null) return false;
 
             string groupName = box.Name ?? string.Empty;
+            string containerPath = BoxGroupPathUtil.GetContainerPath(property);
 
             // Collect all visible properties that share this group name, preserving inspector order
             var group = new List<SerializedProperty>();
@@ -27,12 +28,12 @@ namespace NaughtyAttributes.Editor
                 {
                     do
                     {
-                        var p = so.FindProperty(it.name);
+                        var p = it.Copy();
                         if (p == null) continue;
                         var a = PropertyUtility.GetAttribute<BoxGroupAttribute>(p);
                         if (a != null && (a.Name ?? string.Empty) == groupName)
                         {
-                            if (PropertyUtility.IsVisible(p))
+                            if (PropertyUtility.IsVisible(p) && BoxGroupPathUtil.GetContainerPath(p) == containerPath)
                                 group.Add(p.Copy());
                         }
                     }
@@ -44,7 +45,7 @@ namespace NaughtyAttributes.Editor
                 return false;
 
             // Only the FIRST property in the group draws the box + children; others are skipped
-            if (property.name != group[0].name)
+            if (property.propertyPath != group[0].propertyPath)
                 return false;
 
             var helpStyle = EditorStyles.helpBox;
@@ -88,23 +89,43 @@ namespace NaughtyAttributes.Editor
                 GUILayout.Space(2);
             }
 
-            foreach (var gp in group)
+            int savedIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = savedIndent + 1; // indent inner content so arrows sit inside the box
+            try
             {
-                if (gp.name == "m_Script")
+                foreach (var gp in group)
                 {
-                    using (new EditorGUI.DisabledScope(true))
+                    if (gp.name == "m_Script")
                     {
-                        EditorGUILayout.PropertyField(gp);
+                        using (new EditorGUI.DisabledScope(true))
+                        {
+                            EditorGUILayout.PropertyField(gp);
+                        }
+                        continue;
                     }
-                    continue;
+                    // Draw each grouped property via Naughty pipeline, suppressing regrouping (also safe for owner)
+                    NaughtyEditorGUI.PropertyField_Layout_IgnoreGroups(gp, includeChildren: true);
                 }
-                // Draw each grouped property via Naughty pipeline, suppressing regrouping (also safe for owner)
-                NaughtyEditorGUI.PropertyField_Layout_IgnoreGroups(gp, includeChildren: true);
+            }
+            finally
+            {
+                EditorGUI.indentLevel = savedIndent;
             }
 
             EditorGUILayout.EndVertical();
 
             return false;
+        }
+    }
+
+    internal static class BoxGroupPathUtil
+    {
+        public static string GetContainerPath(SerializedProperty p)
+        {
+            if (p == null) return string.Empty;
+            var path = p.propertyPath;
+            int dot = path.LastIndexOf('.');
+            return dot >= 0 ? path.Substring(0, dot) : string.Empty;
         }
     }
 }

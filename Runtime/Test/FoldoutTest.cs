@@ -17,6 +17,8 @@ namespace NaughtyAttributes.Test
         public int int0;
         [Foldout("Integers")]
         public int int1;
+        [Foldout("Integers")]
+        public int int2;
 
         [Foldout("Floats")]
         public float float0;
