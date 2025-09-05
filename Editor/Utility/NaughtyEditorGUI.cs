@@ -17,6 +17,8 @@ namespace NaughtyAttributes.Editor
         public const float HorizontalSpacing = 2.0f;
 
         private static GUIStyle _buttonStyle = new GUIStyle(GUI.skin.button) { richText = true };
+    private static int _suppressFoldoutHandlingDepth = 0;
+    private static int _suppressBoxGroupHandlingDepth = 0;
 
         private delegate void PropertyFieldFunction(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren);
 
@@ -32,10 +34,15 @@ namespace NaughtyAttributes.Editor
         /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
-            if (!ShouldDraw(property)) return;
+            if (!IsVisibleByMeta(property)) return;
 
             // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
             if (TryDrawSpecialCase(property)) return;
+
+            // Foldout groups: first property in a group draws the foldout + children and consumes the group
+            if (_suppressFoldoutHandlingDepth == 0 && HandleFoldoutGroup(property)) return;
+            // Box groups: similar handling
+            if (_suppressBoxGroupHandlingDepth == 0 && HandleBoxGroup(property)) return;
 
             // Arrays/Lists (except string): draw with Unity's default so we get foldout + Size + elements.
             // If a special-case drawer (e.g., [ReorderableList]) exists, TryDrawSpecialCase above already handled it.
@@ -50,13 +57,13 @@ namespace NaughtyAttributes.Editor
 
             var (owner, field) = ResolveOwnerAndField(property);
 
-            bool changedByUser = DrawThisNode(property);
+            bool enabled = IsEnabledByMeta(property);
+            bool changedByUser = DrawThisNode(property, enabled);
             if (changedByUser)
             {
                 property.serializedObject.ApplyModifiedProperties();
+                RunAfterChangeMeta(property);
             }
-
-            RunMetaOnce(property);
 
             // 2) Run validators once (Min/Max…)
             RunValidatorsOnce(property);
@@ -101,12 +108,58 @@ namespace NaughtyAttributes.Editor
             }
         }
 
+        /// <summary>
+        /// Draw a property but ignore foldout grouping for this call (used by Foldout validator when drawing grouped children).
+        /// </summary>
+        public static void PropertyField_Layout_IgnoreFoldout(SerializedProperty property, bool includeChildren)
+        {
+            _suppressFoldoutHandlingDepth++;
+            try
+            {
+                PropertyField_Layout(property, includeChildren);
+            }
+            finally
+            {
+                _suppressFoldoutHandlingDepth--;
+            }
+        }
+
+        /// <summary>
+        /// Draw a property but ignore foldout and box groups for this call (used by group validators when drawing grouped children).
+        /// </summary>
+        public static void PropertyField_Layout_IgnoreGroups(SerializedProperty property, bool includeChildren)
+        {
+            _suppressFoldoutHandlingDepth++;
+            _suppressBoxGroupHandlingDepth++;
+            try
+            {
+                PropertyField_Layout(property, includeChildren);
+            }
+            finally
+            {
+                _suppressBoxGroupHandlingDepth--;
+                _suppressFoldoutHandlingDepth--;
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────────────────────
         // Step 0: gates & resolution
         // ─────────────────────────────────────────────────────────────────────────────
 
-        private static bool ShouldDraw(SerializedProperty property)
-            => property != null && PropertyUtility.IsVisible(property);
+        private static bool IsVisibleByMeta(SerializedProperty property)
+        {
+            if (property == null) return false;
+            // Defaults to visible when no attribute found
+            var showValidator = new ShowIfMetaPropertyValidatorBase();
+            return showValidator.ValidateMetaProperty(property);
+        }
+
+        private static bool IsEnabledByMeta(SerializedProperty property)
+        {
+            if (property == null) return false;
+            var enableValidator = new EnableIfMetaPropertyValidatorBase();
+            return enableValidator.ValidateMetaProperty(property);
+        }
 
         private static (object owner, FieldInfo field) ResolveOwnerAndField(SerializedProperty property)
         {
@@ -125,19 +178,19 @@ namespace NaughtyAttributes.Editor
         /// Draws only this property (no recursion). Returns true if value changed.
         /// Uses a single reserved rect to avoid extra spacing.
         /// </summary>
-        private static bool DrawThisNode(SerializedProperty property)
+        private static bool DrawThisNode(SerializedProperty property, bool enabled)
         {
-            bool enabled = PropertyUtility.IsEnabled(property);
-
             float h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
             Rect rect = EditorGUILayout.GetControlRect(hasLabel: true, height: h);
 
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                EditorGUI.BeginProperty(rect, new GUIContent(property.displayName), property);
+                // Respect LabelAttribute and other label customizations
+                var label = PropertyUtility.GetLabel(property);
+                EditorGUI.BeginProperty(rect, label, property);
                 EditorGUI.BeginChangeCheck();
 
-                EditorGUI.PropertyField(rect, property, includeChildren: false);
+                EditorGUI.PropertyField(rect, property, label, includeChildren: false);
 
                 bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndProperty();
@@ -192,62 +245,11 @@ namespace NaughtyAttributes.Editor
         /// Run all ValidatorAttributes on this property exactly once.
         /// Returns true if ANY validator actually modified the property's value (so we can Apply once).
         /// </summary>
-        private static void RunMetaOnce(SerializedProperty property)
+        private static void RunAfterChangeMeta(SerializedProperty property)
         {
-            var metas = PropertyUtility.GetAttributes<MetaAttribute>(property);
-
-            foreach (var attr in metas)
-            {
-                switch (attr)
-                {
-                    case FoldoutAttribute:
-                        // Handle foldout attributes
-                        Debug.Log("Foldout attribute found: " + typeof(FoldoutAttribute));
-                        break;
-                    case BoxGroupAttribute:
-                        // Handle group attributes
-                        Debug.Log("Group attribute found: " + typeof(BoxGroupAttribute));
-                        break;
-                    case EnableIfAttribute:
-                        // Handle enable-if attributes
-                        Debug.Log("EnableIf attribute found: " + typeof(EnableIfAttribute));
-                        break;
-                    case DisableIfAttribute:
-                        // Handle disable-if attributes
-                        Debug.Log("DisableIf attribute found: " + typeof(DisableIfAttribute));
-                        break;
-                    case ShowIfAttribute:
-                        // Handle show-if attributes
-                        Debug.Log("ShowIf attribute found: " + typeof(ShowIfAttribute));
-                        break;
-                    case ReadOnlyAttribute:
-                        // Handle read-only attributes
-                        Debug.Log("ReadOnly attribute found: " + typeof(ReadOnlyAttribute));
-                        break;
-                    case HideIfAttribute:
-                        // Handle hide-if attributes
-                        Debug.Log("HideIf attribute found: " + typeof(HideIfAttribute));
-                        break;
-                    case LabelAttribute:
-                        // Handle label attributes
-                        Debug.Log("Label attribute found: " + typeof(LabelAttribute));
-                        break;
-                    case OnValidateAttribute:
-                        // Handle on-validate attributes
-                        Debug.Log("OnValidate attribute found: " + typeof(OnValidateAttribute));
-                        break;
-                    case OnValueChangedAttribute:
-                        // Handle on-value-changed attributes
-                        Debug.Log("OnValueChanged attribute found: " + typeof(OnValueChangedAttribute));
-                        break;
-
-                    // Add cases for other meta attribute types as needed
-                }
-
-                // IMPORTANT: validators must return true ONLY when they WRITE a new value to 'property'
-                attr.GetValidator().ValidateMetaProperty(property);
-            }
-            property.serializedObject.ApplyModifiedProperties();
+            // Only callbacks that care about changes
+            new OnValueChangedMetaPropertyValidator().ValidateMetaProperty(property);
+            new OnValidateMetaPropertyValidator().ValidateMetaProperty(property);
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
@@ -411,7 +413,7 @@ namespace NaughtyAttributes.Editor
         private static bool TryDrawSpecialCase(SerializedProperty property)
         {
             // Respect visibility (consistent with your SpecialCasePropertyDrawerBase.OnGUI)
-            if (!PropertyUtility.IsVisible(property))
+            if (!IsVisibleByMeta(property))
                 return true; // visible=false means "handled" by skipping draw
 
             // Collect special-case attributes on this field
@@ -432,6 +434,26 @@ namespace NaughtyAttributes.Editor
             }
 
             return false;
+        }
+
+        // Handle FoldoutAttribute grouping at draw time. Returns true when the group was drawn and this field should be skipped.
+        private static bool HandleFoldoutGroup(SerializedProperty property)
+        {
+            var fold = PropertyUtility.GetAttribute<FoldoutAttribute>(property);
+            if (fold == null) return false;
+
+            // Let the validator render the group (only first field in group will actually draw)
+            new FoldoutMetaPropertyValidator().ValidateMetaProperty(property);
+            return true;
+        }
+
+        private static bool HandleBoxGroup(SerializedProperty property)
+        {
+            var box = PropertyUtility.GetAttribute<BoxGroupAttribute>(property);
+            if (box == null) return false;
+
+            new BoxGroupMetaPropertyValidator().ValidateMetaProperty(property);
+            return true;
         }
 
         private static IEnumerable<FieldInfo> GetFieldsInDeclarationOrder(Type type)

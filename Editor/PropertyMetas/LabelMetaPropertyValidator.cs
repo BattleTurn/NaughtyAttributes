@@ -7,8 +7,9 @@ namespace NaughtyAttributes.Editor
     {
         public override bool ValidateMetaProperty(SerializedProperty property)
         {
-            // Implement validation logic for LabelAttribute
-            return true;
+            // Label is applied during draw via PropertyUtility.GetLabel; nothing to mutate here
+            // Return false to indicate no serialized changes were made
+            return false;
         }
     }
 }

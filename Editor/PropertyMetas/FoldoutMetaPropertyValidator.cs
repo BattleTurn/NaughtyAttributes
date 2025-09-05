@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEngine;
 
 namespace NaughtyAttributes.Editor
 {
@@ -56,7 +57,60 @@ namespace NaughtyAttributes.Editor
                 s_states[stateKey] = saved;
             }
 
-            saved.Value = EditorGUILayout.Foldout(saved.Value, groupName, true);
+            // Surround the group with a thin helpBox like BoxGroup
+            var helpStyle = EditorStyles.helpBox;
+            EditorGUILayout.BeginVertical(helpStyle);
+
+            // RL-style header with foldout functionality, header background flush with inner box
+            const float headerHeight = 20f;
+            Rect headerRect = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
+            headerRect.x -= helpStyle.padding.left;
+            headerRect.width += helpStyle.padding.left + helpStyle.padding.right;
+            headerRect.y -= helpStyle.padding.top;
+
+            // Draw header background using RL Header style if available
+            var rlHeader = GUI.skin.FindStyle("RL Header");
+            if (rlHeader != null)
+            {
+                GUI.Label(headerRect, GUIContent.none, rlHeader);
+            }
+            else
+            {
+                Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 1f) : new Color(0.80f, 0.80f, 0.80f, 1f);
+                EditorGUI.DrawRect(headerRect, bg);
+            }
+
+            // Foldout arrow — inset further inside the header
+            float arrowW = 0f;
+            Rect arrowRect = new Rect(headerRect.x + 16f, headerRect.y + (headerRect.height - EditorGUIUtility.singleLineHeight) * 0.5f,
+                arrowW, EditorGUIUtility.singleLineHeight);
+            bool newValue = EditorGUI.Foldout(arrowRect, saved.Value, GUIContent.none, true);
+            if (newValue != saved.Value) saved.Value = newValue;
+
+            // Make entire header clickable to toggle
+            if (Event.current.type == EventType.MouseDown && headerRect.Contains(Event.current.mousePosition))
+            {
+                saved.Value = !saved.Value;
+                GUI.changed = true;
+                Event.current.Use();
+            }
+
+            // Label "Name: count"
+            int drawableCount = 0;
+            for (int i = 0; i < group.Count; i++)
+            {
+                var gp = group[i];
+                if (gp.name == "m_Script" || gp.name == property.name) continue;
+                drawableCount++;
+            }
+            var labelRect = new Rect(arrowRect.xMax, headerRect.y, headerRect.width - (arrowRect.width + 16f), headerRect.height);
+            GUIStyle headerLabel = EditorStyles.boldLabel;
+            var content = new GUIContent(string.IsNullOrEmpty(groupName) ? $": {drawableCount}" : $"{groupName}: {drawableCount}");
+            headerLabel.alignment = TextAnchor.MiddleLeft;
+            EditorGUI.LabelField(labelRect, content, headerLabel);
+
+            GUILayout.Space(2);
+
             if (saved.Value)
             {
                 foreach (var gp in group)
@@ -70,10 +124,14 @@ namespace NaughtyAttributes.Editor
                         continue;
                     }
 
-                    // Draw each grouped property via Naughty pipeline (recursively)
-                    NaughtyEditorGUI.PropertyField_Layout(gp, includeChildren: true);
+                    if (gp.name == property.name) // skip drawing the owner itself to prevent recursion
+                        continue;
+
+            // Draw each grouped property via Naughty pipeline (recursively) ignoring foldout regrouping
+                    NaughtyEditorGUI.PropertyField_Layout_IgnoreFoldout(gp, includeChildren: true);
                 }
             }
+        EditorGUILayout.EndVertical();
             return false;
         }
     }
