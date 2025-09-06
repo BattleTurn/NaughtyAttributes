@@ -43,6 +43,13 @@ namespace NaughtyAttributes.Editor
             // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
             if (TryDrawSpecialCase(property)) return;
 
+            // Force built-in PropertyDrawer path for [Expandable] so its custom height + child drawing works.
+            if (PropertyUtility.GetAttribute<ExpandableAttribute>(property) != null)
+            {
+                EditorGUILayout.PropertyField(property, includeChildren: false); // drawer handles expansion & children
+                return;
+            }
+
             if (meta.consumedByGroup) return; // group already drew content
 
             // Arrays/Lists (except string): draw with our ReorderableList helper in layout mode.
@@ -281,17 +288,36 @@ namespace NaughtyAttributes.Editor
         /// </summary>
         private static bool DrawThisNode(SerializedProperty property, bool enabled)
         {
-            float h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+            // Detect if there is any custom PropertyDrawer (DrawerAttribute subclass) so we let Unity handle full height.
+            bool hasCustomDrawer = PropertyUtility.GetAttributes<DrawerAttribute>(property)?.Length > 0;
+            bool includeChildren = false; // default for performance
+            float h;
+            if (hasCustomDrawer)
+            {
+                // Let Unity ask the drawer for correct height (e.g. ShowAssetPreview adds preview texture height)
+                h = EditorGUI.GetPropertyHeight(property, includeChildren: true);
+            }
+            else
+            {
+                h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+            }
             Rect rect = EditorGUILayout.GetControlRect(hasLabel: true, height: h);
 
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                // Respect LabelAttribute and other label customizations
                 var label = PropertyUtility.GetLabel(property);
                 EditorGUI.BeginProperty(rect, label, property);
                 EditorGUI.BeginChangeCheck();
 
-                EditorGUI.PropertyField(rect, property, label, includeChildren: false);
+                if (hasCustomDrawer)
+                {
+                    // Use default path so Unity dispatches to our PropertyDrawerBase subclass (ShowAssetPreviewPropertyDrawer etc.)
+                    EditorGUI.PropertyField(rect, property, label, includeChildren: true);
+                }
+                else
+                {
+                    EditorGUI.PropertyField(rect, property, label, includeChildren: includeChildren);
+                }
 
                 bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndProperty();
@@ -620,29 +646,24 @@ namespace NaughtyAttributes.Editor
                 {
                     return;
                 }
+                // Validate (run once here for direct rect-based draws)
+                var validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
+                foreach (var va in validatorAttributes)
+                {
+                    va.GetValidator().ValidateProperty(property);
+                }
 
-                // Validate
-                // ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
-                // foreach (var validatorAttribute in validatorAttributes)
-                // {
-                //     validatorAttribute.GetValidator().ValidateProperty(property);
-                // }
-
-                // // Check if enabled and draw
-                // EditorGUI.BeginChangeCheck();
-                // bool enabled = PropertyUtility.IsEnabled(property);
-
-                // using (new EditorGUI.DisabledScope(disabled: !enabled))
-                // {
-                //     propertyFieldFunction.Invoke(rect, property, PropertyUtility.GetLabel(property), includeChildren);
-                // }
-
-                // // Call OnValueChanged callbacks
-                // if (EditorGUI.EndChangeCheck())
-                // {
-                //     PropertyUtility.CallOnValueChangedCallbacks(property);
-                //     PropertyUtility.CallOnValidateCallbacks(property);
-                // }
+                EditorGUI.BeginChangeCheck();
+                bool enabled = PropertyUtility.IsEnabled(property);
+                using (new EditorGUI.DisabledScope(!enabled))
+                {
+                    propertyFieldFunction.Invoke(rect, property, PropertyUtility.GetLabel(property), includeChildren);
+                }
+                if (EditorGUI.EndChangeCheck())
+                {
+                    PropertyUtility.CallOnValueChangedCallbacks(property);
+                    PropertyUtility.CallOnValidateCallbacks(property);
+                }
             }
         }
 
