@@ -5,12 +5,21 @@ namespace NaughtyAttributes.Test
     public class FoldoutTest : MonoBehaviour
     {
         [System.Serializable]
-        public sealed class NestedClass
+        internal sealed class NestedClass
         {
             [Foldout("Nested Ints")]
             public int nestedInt0;
             [Foldout("Nested Ints")]
             public int nestedInt1;
+        }
+
+        [System.Serializable]
+        private sealed class NestedClass2
+        {
+            [Foldout("Nested Ints")]
+            public int nestedInt0;
+            [Foldout("Nested Ints")]
+            public NestedClass nestedInt1;
         }
 
         [Foldout("Integers")]
@@ -42,10 +51,10 @@ namespace NaughtyAttributes.Test
 
         [Foldout("Nested Classes")]
         [SerializeField]
-        public NestedClass nestedClass0;
+        internal NestedClass nestedClass0;
 
         [Foldout("Nested Classes")]
         [SerializeField]
-        public NestedClass nestedClass1;
+        private NestedClass2 nestedClass1;
     }
 }

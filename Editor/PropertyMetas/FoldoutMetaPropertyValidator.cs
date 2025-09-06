@@ -17,76 +17,67 @@ namespace NaughtyAttributes.Editor
             if (property == null) return false;
 
             var fold = PropertyUtility.GetAttribute<FoldoutAttribute>(property);
-            if (fold == null) return false; ;
+            if (fold == null) return false;
 
             if (_recDepth > MaxDepth) return false;
-
             var so = property.serializedObject;
             var target = so != null ? so.targetObject : null;
             if (target == null) return false;
 
             string groupName = fold.Name ?? string.Empty;
             string containerPath = GetContainerPath(property);
+            bool nestedContainer = !string.IsNullOrEmpty(containerPath);
+
             string guardKey = target.GetInstanceID() + "|FOLD|" + property.propertyPath;
-            if (!_activeGuards.Add(guardKey)) return false;
+            if (!_activeGuards.Add(guardKey)) return false; // re-entrant
             _recDepth++;
             try
             {
-
-                // Collect contiguous blocks of properties with same name+container
-                List<List<SerializedProperty>> blocks = new List<List<SerializedProperty>>();
-                List<SerializedProperty> current = null;
-                using (var it = so.GetIterator())
+                // Collect SAME-CONTAINER direct siblings like BoxGroup does (fixes nested foldouts)
+                List<SerializedProperty> group = new List<SerializedProperty>();
+                if (string.IsNullOrEmpty(containerPath))
                 {
-                    if (it.NextVisible(true))
+                    using (var it = so.GetIterator())
                     {
-                        do
+                        if (it.NextVisible(true))
                         {
-                            var p = it.Copy();
-                            if (p == null) continue;
-                            var a = PropertyUtility.GetAttribute<FoldoutAttribute>(p);
-                            bool match = a != null && a.Name == groupName && PropertyUtility.IsVisible(p) && GetContainerPath(p) == containerPath;
-                            if (match)
+                            do
                             {
-                                if (current == null) current = new List<SerializedProperty>();
-                                current.Add(p.Copy());
-                            }
-                            else
-                            {
-                                if (current != null)
-                                {
-                                    blocks.Add(current);
-                                    current = null;
-                                }
-                            }
-                        }
-                        while (it.NextVisible(false));
-                    }
-                }
-                if (current != null) blocks.Add(current);
-
-                // Find the block that contains this property
-                List<SerializedProperty> group = null;
-                foreach (var b in blocks)
-                {
-                    for (int i = 0; i < b.Count; i++)
-                    {
-                        if (b[i].propertyPath == property.propertyPath)
-                        {
-                            group = b;
-                            break;
+                                if (it.depth != 0) continue;
+                                var a = PropertyUtility.GetAttribute<FoldoutAttribute>(it);
+                                if (a != null && (a.Name ?? string.Empty) == groupName && PropertyUtility.IsVisible(it))
+                                    group.Add(it.Copy());
+                            } while (it.NextVisible(false));
                         }
                     }
-                    if (group != null) break;
+                }
+                else
+                {
+                    var parent = so.FindProperty(containerPath);
+                    if (parent != null)
+                    {
+                        int parentDepth = parent.depth;
+                        var it = parent.Copy();
+                        var end = it.GetEndProperty();
+                        bool enter = true;
+                        while (it.NextVisible(enter) && !SerializedProperty.EqualContents(it, end))
+                        {
+                            if (it.depth <= parentDepth) break;
+                            if (it.depth == parentDepth + 1)
+                            {
+                                var a = PropertyUtility.GetAttribute<FoldoutAttribute>(it);
+                                if (a != null && (a.Name ?? string.Empty) == groupName && PropertyUtility.IsVisible(it))
+                                    group.Add(it.Copy());
+                            }
+                            enter = false;
+                        }
+                    }
                 }
 
-                if (group == null || group.Count == 0)
-                    return false;
+                if (group.Count == 0) return false;
+                if (property.propertyPath != group[0].propertyPath) return false; // only first draws
 
-                // Draw only for the first property in this contiguous block
-                if (property.propertyPath != group[0].propertyPath)
-                    return false;
-
+                // Persist expansion
                 int id = target.GetInstanceID();
                 string stateKey = id + ".NA.Foldout." + groupName + "|" + containerPath + "|" + group[0].propertyPath;
                 if (!s_states.TryGetValue(stateKey, out var saved))
@@ -96,7 +87,6 @@ namespace NaughtyAttributes.Editor
                 }
 
                 var helpStyle = EditorStyles.helpBox;
-                bool nestedContainer = !string.IsNullOrEmpty(containerPath);
                 NaughtyEditorGUI.BeginGroupBody(nestedContainer, helpStyle);
                 int drawableCount = 0;
                 for (int i = 0; i < group.Count; i++) if (group[i].name != "m_Script") drawableCount++;
@@ -105,22 +95,17 @@ namespace NaughtyAttributes.Editor
                 if (expanded != saved.Value) saved.Value = expanded;
                 GUILayout.Space(2);
 
-                if (saved.Value)
+                if (expanded)
                 {
                     int savedIndent = EditorGUI.indentLevel;
-                    // Root foldout: indent inner fields; nested foldout: keep same indent to align with siblings
-                    if (!nestedContainer)
-                        EditorGUI.indentLevel = savedIndent + 1;
+                    if (!nestedContainer) EditorGUI.indentLevel = savedIndent + 1; // root only
                     try
                     {
                         foreach (var gp in group)
                         {
                             if (gp.name == "m_Script")
                             {
-                                using (new EditorGUI.DisabledScope(true))
-                                {
-                                    EditorGUILayout.PropertyField(gp);
-                                }
+                                using (new EditorGUI.DisabledScope(true)) EditorGUILayout.PropertyField(gp, includeChildren:false);
                                 continue;
                             }
                             bool isComplex = gp.propertyType == SerializedPropertyType.Generic && !gp.isArray;
@@ -129,14 +114,12 @@ namespace NaughtyAttributes.Editor
                                 DrawComplexAllowNestedGroups(gp);
                                 continue;
                             }
-                            NaughtyEditorGUI.PropertyField_Layout_IgnoreFoldout(gp, includeChildren: true);
+                            NaughtyEditorGUI.PropertyField_Layout_IgnoreFoldout(gp, includeChildren:true);
                         }
                     }
-                    finally
-                    {
-                        EditorGUI.indentLevel = savedIndent;
-                    }
+                    finally { EditorGUI.indentLevel = savedIndent; }
                 }
+
                 NaughtyEditorGUI.EndGroupBody();
                 return false;
             }
