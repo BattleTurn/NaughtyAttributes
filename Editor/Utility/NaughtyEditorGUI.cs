@@ -17,6 +17,8 @@ namespace NaughtyAttributes.Editor
         public const float HorizontalSpacing = 2.0f;
 
         private static GUIStyle _buttonStyle = new GUIStyle(GUI.skin.button) { richText = true };
+        private static int _suppressFoldoutHandlingDepth = 0;
+        private static int _suppressBoxGroupHandlingDepth = 0;
 
         private delegate void PropertyFieldFunction(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren);
 
@@ -32,30 +34,41 @@ namespace NaughtyAttributes.Editor
         /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
-            if (!ShouldDraw(property)) return;
+            // One-pass meta processing: visibility, grouping, enabled
+            var meta = MetaAttributeExtensions.ProcessAllMetas(property,
+                allowFoldoutGroup: _suppressFoldoutHandlingDepth == 0,
+                allowBoxGroup: _suppressBoxGroupHandlingDepth == 0);
+            if (!meta.visible) return;
 
             // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
             if (TryDrawSpecialCase(property)) return;
 
-            // Arrays/Lists (except string): draw with Unity's default so we get foldout + Size + elements.
-            // If a special-case drawer (e.g., [ReorderableList]) exists, TryDrawSpecialCase above already handled it.
+            // Force built-in PropertyDrawer path for [Expandable] so its custom height + child drawing works.
+            if (PropertyUtility.GetAttribute<ExpandableAttribute>(property) != null)
+            {
+                EditorGUILayout.PropertyField(property, includeChildren: false); // drawer handles expansion & children
+                return;
+            }
+
+            if (meta.consumedByGroup) return; // group already drew content
+
+            // Arrays/Lists (except string): draw with our ReorderableList helper in layout mode.
+            // Let the list compute its own height; don't pre-reserve a control rect here.
             if (property.isArray && property.propertyType != SerializedPropertyType.String)
             {
-                float propHeight = EditorGUI.GetPropertyHeight(property, includeChildren: false);
-                Rect propRect = EditorGUILayout.GetControlRect(true, propHeight);
-                ReorderableEditorGUI.CreateReorderableList(propRect, property);
+                ReorderableEditorGUI.CreateReorderableList(default, property);
                 // EditorArrayLayout(property);
                 return; // stop here; don't run our manual recursion for this field
             }
 
             var (owner, field) = ResolveOwnerAndField(property);
 
-            // 1) Vẽ CHÍNH field (header/foldout) – NO recursion
-            bool changedByUser = DrawThisNode(property);
+            bool enabled = meta.enabled;
+            bool changedByUser = DrawThisNode(property, enabled);
             if (changedByUser)
             {
                 property.serializedObject.ApplyModifiedProperties();
-                InvokeOnValueChanged(owner, field, property);
+                MetaAttributeExtensions.RunAfterChangeCallbacks(property);
             }
 
             // 2) Run validators once (Min/Max…)
@@ -79,10 +92,9 @@ namespace NaughtyAttributes.Editor
             if (instance != null)
             {
                 int savedIndent = EditorGUI.indentLevel;
-                EditorGUI.indentLevel = savedIndent + 1;
-
+                // BỎ auto +1 indent cho nested managed class members để label không bị thụt sâu hơn field bình thường
+                EditorGUI.indentLevel = savedIndent; 
                 DrawMembersInDeclaredOrder(property, instance);
-
                 EditorGUI.indentLevel = savedIndent;
             }
             else
@@ -101,12 +113,161 @@ namespace NaughtyAttributes.Editor
             }
         }
 
+        /// <summary>
+        /// Draw a property but ignore foldout grouping for this call (used by Foldout validator when drawing grouped children).
+        /// </summary>
+        public static void PropertyField_Layout_IgnoreFoldout(SerializedProperty property, bool includeChildren)
+        {
+            _suppressFoldoutHandlingDepth++;
+            try
+            {
+                PropertyField_Layout(property, includeChildren);
+            }
+            finally
+            {
+                _suppressFoldoutHandlingDepth--;
+            }
+        }
+
+        /// <summary>
+        /// Draw a property but ignore foldout and box groups for this call (used by group validators when drawing grouped children).
+        /// </summary>
+        public static void PropertyField_Layout_IgnoreGroups(SerializedProperty property, bool includeChildren)
+        {
+            _suppressFoldoutHandlingDepth++;
+            _suppressBoxGroupHandlingDepth++;
+            try
+            {
+                PropertyField_Layout(property, includeChildren);
+            }
+            finally
+            {
+                _suppressBoxGroupHandlingDepth--;
+                _suppressFoldoutHandlingDepth--;
+            }
+        }
+
+        // Draw only a static group header (no arrow). Supports expanding to boxStyle padding.
+    public static Rect DrawGroupHeader(string label, int itemCount, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        {
+            float startX;
+            Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
+            string text = string.IsNullOrEmpty(label) ? $": {itemCount}" : $"{label}: {itemCount}";
+            Rect labelRect = new Rect(startX, bg.y, bg.xMax - startX, bg.height);
+            EditorGUI.LabelField(labelRect, text, EditorStyles.boldLabel);
+            return bg;
+        }
+
+        // Draw a foldout-enabled header (arrow + label) with padding expansion support.
+    public static Rect DrawExtendableGroupHeader(string label, int itemCount, ref bool expanded, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        {
+            float startX;
+            Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
+            // Ensure label text aligns exactly like BoxGroup (startX already = bg.x + labelOffsetX).
+            // Place arrow to the left so label begins at the same X as non-foldout group labels.
+            const float arrowW = 14f;
+            const float gap = 4f; // khoảng cách mong muốn giữa arrow và label
+            float labelStart = startX; // target for label text
+            float arrowX = labelStart - (arrowW + gap);
+            // Clamp so arrow doesn't go outside background visually
+            if (arrowX < bg.x + 1f) arrowX = bg.x + 1f;
+            Rect arrowRect = new Rect(arrowX - 2f, bg.y + (bg.height - EditorGUIUtility.singleLineHeight) * 0.5f, arrowW, EditorGUIUtility.singleLineHeight);
+            bool newExp = EditorGUI.Foldout(arrowRect, expanded, GUIContent.none, true);
+            if (newExp != expanded) expanded = newExp;
+            startX = labelStart; // keep label at aligned start
+            string text = string.IsNullOrEmpty(label) ? $": {itemCount}" : $"{label}: {itemCount}";
+            Rect labelRect = new Rect(startX, bg.y, bg.xMax - startX, bg.height);
+            EditorGUI.LabelField(labelRect, text, EditorStyles.boldLabel);
+            if (Event.current.type == EventType.MouseDown && bg.Contains(Event.current.mousePosition))
+            {
+                expanded = !expanded;
+                GUI.changed = true;
+                Event.current.Use();
+            }
+            return bg;
+        }
+
+        // Shared internal setup for group headers (background + starting X after indent + offset)
+        private static Rect PrepareGroupHeader(GUIStyle boxStyle, float labelOffsetX, bool expandBackground, bool useIndent, bool nestedContainer, out float startX)
+        {
+            const float headerHeight = 20f;
+            Rect raw = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
+            Rect bg = raw;
+            if (expandBackground && boxStyle != null)
+            {
+                bg.x -= boxStyle.padding.left;
+                bg.width += boxStyle.padding.left + boxStyle.padding.right;
+                bg.y -= boxStyle.padding.top;
+            }
+            var rlHeader = GUI.skin.FindStyle("RL Header");
+            if (rlHeader != null) GUI.Label(bg, GUIContent.none, rlHeader);
+            else
+            {
+                Color c = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f) : new Color(0.80f, 0.80f, 0.80f);
+                EditorGUI.DrawRect(bg, c);
+            }
+            // Base X = bg.x + labelOffset. Nếu là root group chúng ta đã chèn GUILayout.Space(indent) phía ngoài.
+            // Nếu là nestedContainer, đã có cả GUILayout.Space(indent) + indentLevel áp cho fields => trừ bớt một cấp indent.
+            // Dùng chung một công thức cho root và nested để không bị chênh lệch (padding.left đã áp vào bg)
+            startX = bg.x + labelOffsetX;
+            return bg;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Group body helpers (shared BoxGroup & Foldout)
+        // ─────────────────────────────────────────────────────────────────────────────
+    private static int _groupBodyDepth;
+    private static int _suppressAutoMemberIndentDepth; // skip +1 indent for nested group bodies
+    private static Stack<int> _indentRestoreStack = new Stack<int>();
+
+        public static void BeginGroupBody(bool nestedContainer, GUIStyle boxStyle)
+        {
+            GUILayout.BeginHorizontal();
+            float indentPixels = EditorGUI.indentLevel * IndentLength;
+            if (indentPixels > 0f) GUILayout.Space(indentPixels);
+            EditorGUILayout.BeginVertical(boxStyle ?? EditorStyles.helpBox);
+            if (nestedContainer) _suppressAutoMemberIndentDepth++;
+            // Nested: remove internal label indent (we keep outer horizontal shift from GUILayout.Space)
+            if (nestedContainer)
+            {
+                _indentRestoreStack.Push(EditorGUI.indentLevel);
+                EditorGUI.indentLevel = 0;
+            }
+            else
+            {
+                _indentRestoreStack.Push(int.MinValue);
+            }
+        }
+
+        public static void EndGroupBody()
+        {
+            EditorGUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            if (_suppressAutoMemberIndentDepth > 0) _suppressAutoMemberIndentDepth--;
+            if (_indentRestoreStack.Count > 0)
+            {
+                int prev = _indentRestoreStack.Pop();
+                if (prev != int.MinValue) EditorGUI.indentLevel = prev;
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────────────────────
         // Step 0: gates & resolution
         // ─────────────────────────────────────────────────────────────────────────────
 
-        private static bool ShouldDraw(SerializedProperty property)
-            => property != null && PropertyUtility.IsVisible(property);
+        private static bool IsVisibleByMeta(SerializedProperty property)
+        {
+            if (property == null) return false;
+            // If a ShowIf-like meta exists, resolve its validator via MetaAttributeExtensions
+            var showAttr = PropertyUtility.GetAttribute<ShowIfAttributeBase>(property);
+            if (showAttr != null)
+            {
+                var validator = showAttr.GetValidator();
+                return validator != null && validator.ValidateMetaProperty(property);
+            }
+            // Visible by default when no ShowIf
+            return true;
+        }
 
         private static (object owner, FieldInfo field) ResolveOwnerAndField(SerializedProperty property)
         {
@@ -125,19 +286,38 @@ namespace NaughtyAttributes.Editor
         /// Draws only this property (no recursion). Returns true if value changed.
         /// Uses a single reserved rect to avoid extra spacing.
         /// </summary>
-        private static bool DrawThisNode(SerializedProperty property)
+        private static bool DrawThisNode(SerializedProperty property, bool enabled)
         {
-            bool enabled = PropertyUtility.IsEnabled(property);
-
-            float h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+            // Detect if there is any custom PropertyDrawer (DrawerAttribute subclass) so we let Unity handle full height.
+            bool hasCustomDrawer = PropertyUtility.GetAttributes<DrawerAttribute>(property)?.Length > 0;
+            bool includeChildren = false; // default for performance
+            float h;
+            if (hasCustomDrawer)
+            {
+                // Let Unity ask the drawer for correct height (e.g. ShowAssetPreview adds preview texture height)
+                h = EditorGUI.GetPropertyHeight(property, includeChildren: true);
+            }
+            else
+            {
+                h = EditorGUI.GetPropertyHeight(property, includeChildren: false);
+            }
             Rect rect = EditorGUILayout.GetControlRect(hasLabel: true, height: h);
 
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                EditorGUI.BeginProperty(rect, new GUIContent(property.displayName), property);
+                var label = PropertyUtility.GetLabel(property);
+                EditorGUI.BeginProperty(rect, label, property);
                 EditorGUI.BeginChangeCheck();
 
-                EditorGUI.PropertyField(rect, property, includeChildren: false);
+                if (hasCustomDrawer)
+                {
+                    // Use default path so Unity dispatches to our PropertyDrawerBase subclass (ShowAssetPreviewPropertyDrawer etc.)
+                    EditorGUI.PropertyField(rect, property, label, includeChildren: true);
+                }
+                else
+                {
+                    EditorGUI.PropertyField(rect, property, label, includeChildren: includeChildren);
+                }
 
                 bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndProperty();
@@ -146,46 +326,7 @@ namespace NaughtyAttributes.Editor
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
-        // Step 2: OnValueChanged
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        private static void InvokeOnValueChanged(object owner, FieldInfo fi, SerializedProperty property)
-        {
-            if (owner == null || fi == null) return;
-
-            foreach (var a in fi.GetCustomAttributes(true))
-            {
-                var at = a.GetType();
-                var name = at.Name;
-                if (name != "OnValueChanged" && name != "OnValueChangedAttribute") continue;
-
-                string cb = GetAttrString(at, a, "CallbackName");
-                if (string.IsNullOrEmpty(cb)) continue;
-
-                MethodInfo mi =
-                    ReflectionUtility.GetMethod(owner, cb) ??
-                    owner.GetType().GetMethod(cb, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-                if (mi == null) continue;
-
-                try
-                {
-                    if (mi.GetParameters().Length == 1)
-                    {
-                        object current = PropertyUtility.GetTargetObjectOfProperty(property);
-                        mi.Invoke(owner, new[] { current });
-                    }
-                    else
-                    {
-                        mi.Invoke(owner, null);
-                    }
-                }
-                catch (Exception ex) { Debug.LogException(ex); }
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────────────
-        // Step 3: ValidateInput
+        // Step 4: ValidateAttributes
         // ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -210,7 +351,7 @@ namespace NaughtyAttributes.Editor
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
-        // Step 4A: Arrays/lists
+        // Step 5: Arrays/lists
         // ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -345,7 +486,7 @@ namespace NaughtyAttributes.Editor
         private static bool TryDrawSpecialCase(SerializedProperty property)
         {
             // Respect visibility (consistent with your SpecialCasePropertyDrawerBase.OnGUI)
-            if (!PropertyUtility.IsVisible(property))
+            if (!IsVisibleByMeta(property))
                 return true; // visible=false means "handled" by skipping draw
 
             // Collect special-case attributes on this field
@@ -366,6 +507,28 @@ namespace NaughtyAttributes.Editor
             }
 
             return false;
+        }
+
+        // Handle FoldoutAttribute grouping at draw time. Returns true when the group was drawn and this field should be skipped.
+        private static bool HandleFoldoutGroup(SerializedProperty property)
+        {
+            var fold = PropertyUtility.GetAttribute<FoldoutAttribute>(property);
+            if (fold == null) return false;
+
+            // Let the mapped validator render the group (first field draws)
+            var v = fold.GetValidator();
+            v?.ValidateMetaProperty(property);
+            return true;
+        }
+
+        private static bool HandleBoxGroup(SerializedProperty property)
+        {
+            var box = PropertyUtility.GetAttribute<BoxGroupAttribute>(property);
+            if (box == null) return false;
+
+            var v = box.GetValidator();
+            v?.ValidateMetaProperty(property);
+            return true;
         }
 
         private static IEnumerable<FieldInfo> GetFieldsInDeclarationOrder(Type type)
@@ -483,24 +646,19 @@ namespace NaughtyAttributes.Editor
                 {
                     return;
                 }
-
-                // Validate
-                ValidatorAttribute[] validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
-                foreach (var validatorAttribute in validatorAttributes)
+                // Validate (run once here for direct rect-based draws)
+                var validatorAttributes = PropertyUtility.GetAttributes<ValidatorAttribute>(property);
+                foreach (var va in validatorAttributes)
                 {
-                    validatorAttribute.GetValidator().ValidateProperty(property);
+                    va.GetValidator().ValidateProperty(property);
                 }
 
-                // Check if enabled and draw
                 EditorGUI.BeginChangeCheck();
                 bool enabled = PropertyUtility.IsEnabled(property);
-
-                using (new EditorGUI.DisabledScope(disabled: !enabled))
+                using (new EditorGUI.DisabledScope(!enabled))
                 {
                     propertyFieldFunction.Invoke(rect, property, PropertyUtility.GetLabel(property), includeChildren);
                 }
-
-                // Call OnValueChanged callbacks
                 if (EditorGUI.EndChangeCheck())
                 {
                     PropertyUtility.CallOnValueChangedCallbacks(property);
