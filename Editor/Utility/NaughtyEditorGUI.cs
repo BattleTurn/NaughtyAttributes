@@ -85,10 +85,9 @@ namespace NaughtyAttributes.Editor
             if (instance != null)
             {
                 int savedIndent = EditorGUI.indentLevel;
-                EditorGUI.indentLevel = savedIndent + 1;
-
+                // BỎ auto +1 indent cho nested managed class members để label không bị thụt sâu hơn field bình thường
+                EditorGUI.indentLevel = savedIndent; 
                 DrawMembersInDeclaredOrder(property, instance);
-
                 EditorGUI.indentLevel = savedIndent;
             }
             else
@@ -141,44 +140,108 @@ namespace NaughtyAttributes.Editor
             }
         }
 
-        public static Rect DrawGroupHeader(string label, List<SerializedProperty> group, GUIStyle helpStyle, GUIStyle labelStyle, Vector2 labelOffset = default)
+        // Draw only a static group header (no arrow). Supports expanding to boxStyle padding.
+    public static Rect DrawGroupHeader(string label, int itemCount, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        {
+            float startX;
+            Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
+            string text = string.IsNullOrEmpty(label) ? $": {itemCount}" : $"{label}: {itemCount}";
+            Rect labelRect = new Rect(startX, bg.y, bg.xMax - startX, bg.height);
+            EditorGUI.LabelField(labelRect, text, EditorStyles.boldLabel);
+            return bg;
+        }
+
+        // Draw a foldout-enabled header (arrow + label) with padding expansion support.
+    public static Rect DrawExtendableGroupHeader(string label, int itemCount, ref bool expanded, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        {
+            float startX;
+            Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
+            // Ensure label text aligns exactly like BoxGroup (startX already = bg.x + labelOffsetX).
+            // Place arrow to the left so label begins at the same X as non-foldout group labels.
+            const float arrowW = 14f;
+            const float gap = 4f; // khoảng cách mong muốn giữa arrow và label
+            float labelStart = startX; // target for label text
+            float arrowX = labelStart - (arrowW + gap);
+            // Clamp so arrow doesn't go outside background visually
+            if (arrowX < bg.x + 1f) arrowX = bg.x + 1f;
+            Rect arrowRect = new Rect(arrowX - 2f, bg.y + (bg.height - EditorGUIUtility.singleLineHeight) * 0.5f, arrowW, EditorGUIUtility.singleLineHeight);
+            bool newExp = EditorGUI.Foldout(arrowRect, expanded, GUIContent.none, true);
+            if (newExp != expanded) expanded = newExp;
+            startX = labelStart; // keep label at aligned start
+            string text = string.IsNullOrEmpty(label) ? $": {itemCount}" : $"{label}: {itemCount}";
+            Rect labelRect = new Rect(startX, bg.y, bg.xMax - startX, bg.height);
+            EditorGUI.LabelField(labelRect, text, EditorStyles.boldLabel);
+            if (Event.current.type == EventType.MouseDown && bg.Contains(Event.current.mousePosition))
+            {
+                expanded = !expanded;
+                GUI.changed = true;
+                Event.current.Use();
+            }
+            return bg;
+        }
+
+        // Shared internal setup for group headers (background + starting X after indent + offset)
+        private static Rect PrepareGroupHeader(GUIStyle boxStyle, float labelOffsetX, bool expandBackground, bool useIndent, bool nestedContainer, out float startX)
         {
             const float headerHeight = 20f;
-
-            if (labelOffset == default)
-                labelOffset = new Vector2(0f, 0f);
-            Rect headerRect = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
-            // Compensate helpBox padding to span full inner width and height (flush to box edges)
-            headerRect.x -= helpStyle.padding.left;
-            headerRect.width += helpStyle.padding.left + helpStyle.padding.right;
-            headerRect.y -= helpStyle.padding.top;
-
-            // Draw RL-style header background if available; otherwise fallback to a flat color
-            var rlHeader = GUI.skin.FindStyle("RL Header");
-            if (rlHeader != null)
+            Rect raw = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
+            Rect bg = raw;
+            if (expandBackground && boxStyle != null)
             {
-                GUI.Label(headerRect, GUIContent.none, rlHeader);
+                bg.x -= boxStyle.padding.left;
+                bg.width += boxStyle.padding.left + boxStyle.padding.right;
+                bg.y -= boxStyle.padding.top;
+            }
+            var rlHeader = GUI.skin.FindStyle("RL Header");
+            if (rlHeader != null) GUI.Label(bg, GUIContent.none, rlHeader);
+            else
+            {
+                Color c = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f) : new Color(0.80f, 0.80f, 0.80f);
+                EditorGUI.DrawRect(bg, c);
+            }
+            // Base X = bg.x + labelOffset. Nếu là root group chúng ta đã chèn GUILayout.Space(indent) phía ngoài.
+            // Nếu là nestedContainer, đã có cả GUILayout.Space(indent) + indentLevel áp cho fields => trừ bớt một cấp indent.
+            // Dùng chung một công thức cho root và nested để không bị chênh lệch (padding.left đã áp vào bg)
+            startX = bg.x + labelOffsetX;
+            return bg;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Group body helpers (shared BoxGroup & Foldout)
+        // ─────────────────────────────────────────────────────────────────────────────
+    private static int _groupBodyDepth;
+    private static int _suppressAutoMemberIndentDepth; // skip +1 indent for nested group bodies
+    private static Stack<int> _indentRestoreStack = new Stack<int>();
+
+        public static void BeginGroupBody(bool nestedContainer, GUIStyle boxStyle)
+        {
+            GUILayout.BeginHorizontal();
+            float indentPixels = EditorGUI.indentLevel * IndentLength;
+            if (indentPixels > 0f) GUILayout.Space(indentPixels);
+            EditorGUILayout.BeginVertical(boxStyle ?? EditorStyles.helpBox);
+            if (nestedContainer) _suppressAutoMemberIndentDepth++;
+            // Nested: remove internal label indent (we keep outer horizontal shift from GUILayout.Space)
+            if (nestedContainer)
+            {
+                _indentRestoreStack.Push(EditorGUI.indentLevel);
+                EditorGUI.indentLevel = 0;
             }
             else
             {
-                Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 1f) : new Color(0.80f, 0.80f, 0.80f, 1f);
-                EditorGUI.DrawRect(headerRect, bg);
+                _indentRestoreStack.Push(int.MinValue);
             }
+        }
 
-            // Label: "Name: count" centered vertically, left aligned like RL header title
-            int drawableCount = 0;
-            for (int i = 0; i < group.Count; i++)
+        public static void EndGroupBody()
+        {
+            EditorGUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            if (_suppressAutoMemberIndentDepth > 0) _suppressAutoMemberIndentDepth--;
+            if (_indentRestoreStack.Count > 0)
             {
-                var gp = group[i];
-                if (gp.name == "m_Script") continue;
-                drawableCount++;
+                int prev = _indentRestoreStack.Pop();
+                if (prev != int.MinValue) EditorGUI.indentLevel = prev;
             }
-            var labelRect = new Rect(headerRect.x + labelOffset.x, headerRect.y + labelOffset.y, headerRect.width - 16f, headerRect.height);
-            var content = new GUIContent(string.IsNullOrEmpty(label) ? $": {drawableCount}" : $"{label}: {drawableCount}");
-            labelStyle.alignment = TextAnchor.MiddleLeft;
-            EditorGUI.LabelField(labelRect, content, labelStyle);
-
-            return headerRect;
         }
 
         // ─────────────────────────────────────────────────────────────────────────────

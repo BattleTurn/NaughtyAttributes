@@ -84,16 +84,21 @@ namespace NaughtyAttributes.Editor
                 // Removed contiguous auto-extension: each attributed field (or set of attributed siblings) forms its own group.
 
                 var helpStyle = EditorStyles.helpBox;
-                EditorGUILayout.BeginVertical(helpStyle);
-                // Header bar styled similar to ReorderableList header
+                bool nestedContainer = !string.IsNullOrEmpty(containerPath);
+                NaughtyEditorGUI.BeginGroupBody(nestedContainer, helpStyle);
                 if (!string.IsNullOrEmpty(groupName))
                 {
-                    NaughtyEditorGUI.DrawGroupHeader(groupName, group, helpStyle, EditorStyles.boldLabel, new Vector2(4, 0));
+                    int drawableCount = 0;
+                    for (int i = 0; i < group.Count; i++)
+                        if (group[i].name != "m_Script") drawableCount++;
+                    NaughtyEditorGUI.DrawGroupHeader(groupName, drawableCount, helpStyle, labelOffsetX:4f, expandBackground:true, useIndent:false, nestedContainer:nestedContainer);
                     GUILayout.Space(2);
                 }
 
                 int savedIndent = EditorGUI.indentLevel;
-                EditorGUI.indentLevel = savedIndent + 1; // indent inner content so arrows sit inside the box
+                // Root groups indent inner fields one level; nested groups keep same indent so labels align with siblings
+                if (string.IsNullOrEmpty(containerPath))
+                    EditorGUI.indentLevel = savedIndent + 1;
                 try
                 {
                     foreach (var gp in group)
@@ -144,7 +149,7 @@ namespace NaughtyAttributes.Editor
                     EditorGUI.indentLevel = savedIndent;
                 }
 
-                EditorGUILayout.EndVertical();
+                NaughtyEditorGUI.EndGroupBody();
 
                 return false;
             }

@@ -95,47 +95,22 @@ namespace NaughtyAttributes.Editor
                     s_states[stateKey] = saved;
                 }
 
-                // Surround the group with a thin helpBox like BoxGroup
                 var helpStyle = EditorStyles.helpBox;
-                EditorGUILayout.BeginVertical(helpStyle);
-
-                float xOffset = 16f; // match ReorderableList header padding
-
-                Rect headerRect = NaughtyEditorGUI.DrawGroupHeader(groupName, group, helpStyle, EditorStyles.boldLabel, new Vector2(xOffset, 0));
-
-                // Foldout arrow — keep inside the inner padding of the box group
-                float arrowW = 14f;
-                float innerLeft = headerRect.x; // within helpBox inner area
-                Rect arrowRect = new Rect(innerLeft + xOffset, headerRect.y + (headerRect.height - EditorGUIUtility.singleLineHeight) * 0.5f,
-                    arrowW, EditorGUIUtility.singleLineHeight);
-                bool newValue = EditorGUI.Foldout(arrowRect, saved.Value, GUIContent.none, true);
-                if (newValue != saved.Value) saved.Value = newValue;
-
-                // Make entire header clickable to toggle
-                if (Event.current.type == EventType.MouseDown && headerRect.Contains(Event.current.mousePosition))
-                {
-                    saved.Value = !saved.Value;
-                    GUI.changed = true;
-                    Event.current.Use();
-                }
-
-                // Label "Name: count"
+                bool nestedContainer = !string.IsNullOrEmpty(containerPath);
+                NaughtyEditorGUI.BeginGroupBody(nestedContainer, helpStyle);
                 int drawableCount = 0;
-                for (int i = 0; i < group.Count; i++)
-                {
-                    var gp = group[i];
-                    if (gp.name == "m_Script") continue;
-                    drawableCount++;
-                }
-
-                var content = new GUIContent(string.IsNullOrEmpty(groupName) ? $": {drawableCount}" : $"{groupName}: {drawableCount}");
-
+                for (int i = 0; i < group.Count; i++) if (group[i].name != "m_Script") drawableCount++;
+                bool expanded = saved.Value;
+                NaughtyEditorGUI.DrawExtendableGroupHeader(groupName, drawableCount, ref expanded, helpStyle, labelOffsetX:4f, expandBackground:true, useIndent:false, nestedContainer:nestedContainer);
+                if (expanded != saved.Value) saved.Value = expanded;
                 GUILayout.Space(2);
 
                 if (saved.Value)
                 {
                     int savedIndent = EditorGUI.indentLevel;
-                    EditorGUI.indentLevel = savedIndent + 1; // indent inner content so nested arrows live inside the box
+                    // Root foldout: indent inner fields; nested foldout: keep same indent to align with siblings
+                    if (!nestedContainer)
+                        EditorGUI.indentLevel = savedIndent + 1;
                     try
                     {
                         foreach (var gp in group)
@@ -162,7 +137,7 @@ namespace NaughtyAttributes.Editor
                         EditorGUI.indentLevel = savedIndent;
                     }
                 }
-                EditorGUILayout.EndVertical();
+                NaughtyEditorGUI.EndGroupBody();
                 return false;
             }
             finally
