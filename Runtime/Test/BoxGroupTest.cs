@@ -4,6 +4,15 @@ namespace NaughtyAttributes.Test
 {
     public class BoxGroupTest : MonoBehaviour
     {
+        [System.Serializable]
+        public sealed class NestedClass
+        {
+            [BoxGroup("Nested Ints")]
+            public int nestedInt0;
+            
+            public int nestedInt1;
+        }
+
         [BoxGroup("Integers")]
         public int int0;
         [BoxGroup("Integers")]
@@ -28,5 +37,11 @@ namespace NaughtyAttributes.Test
         public Transform trans0;
         [BoxGroup]
         public Transform trans1;
+
+        [BoxGroup("Nested Classes")]
+        public NestedClass nestedClass0;
+
+        [BoxGroup("Nested Classes")]
+        public NestedClass nestedClass1;
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -6,6 +7,9 @@ namespace NaughtyAttributes.Editor
 {
     public class BoxGroupMetaPropertyValidator : MetaPropertyValidatorBase
     {
+        private static readonly HashSet<string> _activeGuards = new HashSet<string>();
+        [ThreadStatic] private static int _recursionDepth;
+        private const int MaxDepth = 64;
         public override bool ValidateMetaProperty(SerializedProperty property)
         {
             if (property == null) return false;
@@ -13,114 +17,146 @@ namespace NaughtyAttributes.Editor
             var box = PropertyUtility.GetAttribute<BoxGroupAttribute>(property);
             if (box == null) return false;
 
+            if (_recursionDepth > MaxDepth) return false;
+
             var so = property.serializedObject;
             var target = so != null ? so.targetObject : null;
             if (target == null) return false;
 
-            string groupName = box.Name ?? string.Empty;
-            string containerPath = BoxGroupPathUtil.GetContainerPath(property);
-
-            // Collect all visible properties that share this group name, preserving inspector order
-            var group = new List<SerializedProperty>();
-            using (var it = so.GetIterator())
+            string guardKey = target.GetInstanceID() + "|BOX|" + property.propertyPath;
+            if (!_activeGuards.Add(guardKey)) return false; // re-entrant, skip
+            _recursionDepth++;
+            try
             {
-                if (it.NextVisible(true))
+
+                string groupName = box.Name ?? string.Empty;
+                string containerPath = GetContainerPath(property);
+
+                // Collect visible properties in SAME container (direct siblings). Root container uses depth==0 scan.
+                var group = new List<SerializedProperty>();
+                if (string.IsNullOrEmpty(containerPath))
                 {
-                    do
+                    using (var it = so.GetIterator())
                     {
-                        var p = it.Copy();
-                        if (p == null) continue;
-                        var a = PropertyUtility.GetAttribute<BoxGroupAttribute>(p);
-                        if (a != null && (a.Name ?? string.Empty) == groupName)
+                        if (it.NextVisible(true))
                         {
-                            if (PropertyUtility.IsVisible(p) && BoxGroupPathUtil.GetContainerPath(p) == containerPath)
-                                group.Add(p.Copy());
+                            do
+                            {
+                                if (it.depth != 0) continue; // root-level only
+                                var a = PropertyUtility.GetAttribute<BoxGroupAttribute>(it);
+                                if (a != null && (a.Name ?? string.Empty) == groupName && PropertyUtility.IsVisible(it))
+                                    group.Add(it.Copy());
+                            } while (it.NextVisible(false));
                         }
                     }
-                    while (it.NextVisible(false));
-                }
-            }
-
-            if (group.Count == 0)
-                return false;
-
-            // Only the FIRST property in the group draws the box + children; others are skipped
-            if (property.propertyPath != group[0].propertyPath)
-                return false;
-
-            var helpStyle = EditorStyles.helpBox;
-            EditorGUILayout.BeginVertical(helpStyle);
-            // Header bar styled similar to ReorderableList header
-            if (!string.IsNullOrEmpty(groupName))
-            {
-                const float headerHeight = 20f;
-                Rect headerRect = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
-                // Compensate helpBox padding to span full inner width and height (flush to box edges)
-                headerRect.x -= helpStyle.padding.left;
-                headerRect.width += helpStyle.padding.left + helpStyle.padding.right;
-                headerRect.y -= helpStyle.padding.top;
-
-                // Draw RL-style header background if available; otherwise fallback to a flat color
-                var rlHeader = GUI.skin.FindStyle("RL Header");
-                if (rlHeader != null)
-                {
-                    GUI.Label(headerRect, GUIContent.none, rlHeader);
                 }
                 else
                 {
-                    Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 1f) : new Color(0.80f, 0.80f, 0.80f, 1f);
-                    EditorGUI.DrawRect(headerRect, bg);
-                }
-
-                // Label: "Name: count" centered vertically, left aligned like RL header title
-                int drawableCount = 0;
-                for (int i = 0; i < group.Count; i++)
-                {
-                    var gp = group[i];
-                    if (gp.name == "m_Script") continue;
-                    drawableCount++;
-                }
-                var labelRect = new Rect(headerRect.x + 8f, headerRect.y, headerRect.width - 16f, headerRect.height);
-                GUIStyle headerLabel = EditorStyles.boldLabel;
-                var content = new GUIContent(string.IsNullOrEmpty(groupName) ? $": {drawableCount}" : $"{groupName}: {drawableCount}");
-                headerLabel.alignment = TextAnchor.MiddleLeft;
-                EditorGUI.LabelField(labelRect, content, headerLabel);
-
-                GUILayout.Space(2);
-            }
-
-            int savedIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = savedIndent + 1; // indent inner content so arrows sit inside the box
-            try
-            {
-                foreach (var gp in group)
-                {
-                    if (gp.name == "m_Script")
+                    // Nested: scope to parent property and only take its direct children
+                    var parentProp = so.FindProperty(containerPath);
+                    if (parentProp != null)
                     {
-                        using (new EditorGUI.DisabledScope(true))
+                        int parentDepth = parentProp.depth;
+                        var it = parentProp.Copy();
+                        var end = it.GetEndProperty();
+                        bool enter = true;
+                        while (it.NextVisible(enter) && !SerializedProperty.EqualContents(it, end))
                         {
-                            EditorGUILayout.PropertyField(gp);
+                            if (it.depth <= parentDepth) break; // done with this subtree
+                            if (it.depth == parentDepth + 1)
+                            {
+                                var a = PropertyUtility.GetAttribute<BoxGroupAttribute>(it);
+                                if (a != null && (a.Name ?? string.Empty) == groupName && PropertyUtility.IsVisible(it))
+                                    group.Add(it.Copy());
+                            }
+                            enter = false; // siblings only
                         }
-                        continue;
                     }
-                    // Draw each grouped property via Naughty pipeline, suppressing regrouping (also safe for owner)
-                    NaughtyEditorGUI.PropertyField_Layout_IgnoreGroups(gp, includeChildren: true);
                 }
+
+                if (group.Count == 0)
+                    return false;
+
+                // Only the FIRST property in the group draws the box + children; others are skipped
+                if (property.propertyPath != group[0].propertyPath)
+                    return false;
+
+                // Removed contiguous auto-extension: each attributed field (or set of attributed siblings) forms its own group.
+
+                var helpStyle = EditorStyles.helpBox;
+                EditorGUILayout.BeginVertical(helpStyle);
+                // Header bar styled similar to ReorderableList header
+                if (!string.IsNullOrEmpty(groupName))
+                {
+                    NaughtyEditorGUI.DrawGroupHeader(groupName, group, helpStyle, EditorStyles.boldLabel, new Vector2(4, 0));
+                    GUILayout.Space(2);
+                }
+
+                int savedIndent = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = savedIndent + 1; // indent inner content so arrows sit inside the box
+                try
+                {
+                    foreach (var gp in group)
+                    {
+                        if (gp.name == "m_Script")
+                        {
+                            using (new EditorGUI.DisabledScope(true))
+                            {
+                                EditorGUILayout.PropertyField(gp, includeChildren: false);
+                            }
+                            continue;
+                        }
+
+                        bool isComplex = gp.propertyType == SerializedPropertyType.Generic && !gp.isArray;
+                            if (isComplex)
+                            {
+                                // Custom foldout line (avoid Unity auto child draw to prevent duplicates)
+                                gp.isExpanded = EditorGUILayout.Foldout(gp.isExpanded, PropertyUtility.GetLabel(gp), true);
+                                if (!gp.isExpanded) continue;
+
+                            int savedChildIndent = EditorGUI.indentLevel;
+                            EditorGUI.indentLevel = savedChildIndent + 1;
+                            try
+                            {
+                                var it = gp.Copy();
+                                var end = it.GetEndProperty();
+                                bool enterChildren = true;
+                                while (it.NextVisible(enterChildren) && !SerializedProperty.EqualContents(it, end))
+                                {
+                                    if (it.name == "m_Script") { enterChildren = false; continue; }
+                                    NaughtyEditorGUI.PropertyField_Layout(it.Copy(), includeChildren: true);
+                                    enterChildren = false; // siblings only
+                                }
+                            }
+                            finally
+                            {
+                                EditorGUI.indentLevel = savedChildIndent;
+                            }
+                            continue;
+                        }
+
+                        // Simple field inside this box group: ignore groups to avoid re-trigger at same level
+                        NaughtyEditorGUI.PropertyField_Layout_IgnoreGroups(gp, includeChildren: true);
+                    }
+                }
+                finally
+                {
+                    EditorGUI.indentLevel = savedIndent;
+                }
+
+                EditorGUILayout.EndVertical();
+
+                return false;
             }
             finally
             {
-                EditorGUI.indentLevel = savedIndent;
+                _recursionDepth--;
+                _activeGuards.Remove(guardKey);
             }
-
-            EditorGUILayout.EndVertical();
-
-            return false;
         }
-    }
+        // (Unused legacy traversal removed; complex properties now drawn directly via Naughty pipeline)
 
-    internal static class BoxGroupPathUtil
-    {
-        public static string GetContainerPath(SerializedProperty p)
+        private static string GetContainerPath(SerializedProperty p)
         {
             if (p == null) return string.Empty;
             var path = p.propertyPath;

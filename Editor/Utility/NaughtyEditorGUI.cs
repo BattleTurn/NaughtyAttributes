@@ -17,8 +17,8 @@ namespace NaughtyAttributes.Editor
         public const float HorizontalSpacing = 2.0f;
 
         private static GUIStyle _buttonStyle = new GUIStyle(GUI.skin.button) { richText = true };
-    private static int _suppressFoldoutHandlingDepth = 0;
-    private static int _suppressBoxGroupHandlingDepth = 0;
+        private static int _suppressFoldoutHandlingDepth = 0;
+        private static int _suppressBoxGroupHandlingDepth = 0;
 
         private delegate void PropertyFieldFunction(Rect rect, SerializedProperty property, GUIContent label, bool includeChildren);
 
@@ -139,6 +139,46 @@ namespace NaughtyAttributes.Editor
                 _suppressBoxGroupHandlingDepth--;
                 _suppressFoldoutHandlingDepth--;
             }
+        }
+
+        public static Rect DrawGroupHeader(string label, List<SerializedProperty> group, GUIStyle helpStyle, GUIStyle labelStyle, Vector2 labelOffset = default)
+        {
+            const float headerHeight = 20f;
+
+            if (labelOffset == default)
+                labelOffset = new Vector2(0f, 0f);
+            Rect headerRect = GUILayoutUtility.GetRect(0, headerHeight, GUILayout.ExpandWidth(true));
+            // Compensate helpBox padding to span full inner width and height (flush to box edges)
+            headerRect.x -= helpStyle.padding.left;
+            headerRect.width += helpStyle.padding.left + helpStyle.padding.right;
+            headerRect.y -= helpStyle.padding.top;
+
+            // Draw RL-style header background if available; otherwise fallback to a flat color
+            var rlHeader = GUI.skin.FindStyle("RL Header");
+            if (rlHeader != null)
+            {
+                GUI.Label(headerRect, GUIContent.none, rlHeader);
+            }
+            else
+            {
+                Color bg = EditorGUIUtility.isProSkin ? new Color(0.18f, 0.18f, 0.18f, 1f) : new Color(0.80f, 0.80f, 0.80f, 1f);
+                EditorGUI.DrawRect(headerRect, bg);
+            }
+
+            // Label: "Name: count" centered vertically, left aligned like RL header title
+            int drawableCount = 0;
+            for (int i = 0; i < group.Count; i++)
+            {
+                var gp = group[i];
+                if (gp.name == "m_Script") continue;
+                drawableCount++;
+            }
+            var labelRect = new Rect(headerRect.x + labelOffset.x, headerRect.y + labelOffset.y, headerRect.width - 16f, headerRect.height);
+            var content = new GUIContent(string.IsNullOrEmpty(label) ? $": {drawableCount}" : $"{label}: {drawableCount}");
+            labelStyle.alignment = TextAnchor.MiddleLeft;
+            EditorGUI.LabelField(labelRect, content, labelStyle);
+
+            return headerRect;
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
