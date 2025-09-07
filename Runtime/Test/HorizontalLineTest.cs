@@ -4,27 +4,27 @@ namespace NaughtyAttributes.Test
 {
     public class HorizontalLineTest : MonoBehaviour
     {
-        [HorizontalLine(color: EColor.Black)]
+    [HorizontalLine(0f, 0f, 0f)] // Black
         [Header("Black")]
-        [HorizontalLine(color: EColor.Blue)]
+    [HorizontalLine(0f, 0.529f, 0.741f)] // Blue (0,135,189)
         [Header("Blue")]
-        [HorizontalLine(color: EColor.Gray)]
+    [HorizontalLine(0.502f, 0.502f, 0.502f)] // Gray (128,128,128)
         [Header("Gray")]
-        [HorizontalLine(color: EColor.Green)]
+    [HorizontalLine(0.384f, 0.784f, 0.310f)] // Green (98,200,79)
         [Header("Green")]
-        [HorizontalLine(color: EColor.Indigo)]
+    [HorizontalLine(0.294f, 0f, 0.510f)] // Indigo (75,0,130)
         [Header("Indigo")]
-        [HorizontalLine(color: EColor.Orange)]
+    [HorizontalLine(1f, 0.502f, 0f)] // Orange (255,128,0)
         [Header("Orange")]
-        [HorizontalLine(color: EColor.Pink)]
+    [HorizontalLine(1f, 0.596f, 0.796f)] // Pink (255,152,203)
         [Header("Pink")]
-        [HorizontalLine(color: EColor.Red)]
+    [HorizontalLine(1f, 0f, 0.247f)] // Red (255,0,63)
         [Header("Red")]
-        [HorizontalLine(color: EColor.Violet)]
+    [HorizontalLine(0.502f, 0f, 1f)] // Violet (128,0,255)
         [Header("Violet")]
-        [HorizontalLine(color: EColor.White)]
+    [HorizontalLine(1f, 1f, 1f)] // White
         [Header("White")]
-        [HorizontalLine(color: EColor.Yellow)]
+    [HorizontalLine(1f, 0.827f, 0f)] // Yellow (255,211,0)
         [Header("Yellow")]
         [HorizontalLine(10.0f)]
         [Header("Thick")]

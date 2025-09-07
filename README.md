@@ -212,13 +212,13 @@ public class NaughtyComponent : MonoBehaviour
 ```csharp
 public class NaughtyComponent : MonoBehaviour
 {
-	[HorizontalLine(color: EColor.Red)]
+	[HorizontalLine(1f, 0f, 0.247f)] // Red
 	public int red;
 
-	[HorizontalLine(color: EColor.Green)]
+	[HorizontalLine(0.384f, 0.784f, 0.310f)] // Green
 	public int green;
 
-	[HorizontalLine(color: EColor.Blue)]
+	[HorizontalLine(0f, 0.529f, 0.741f)] // Blue
 	public int blue;
 }
 ```
@@ -290,13 +290,14 @@ public class NaughtyComponent : MonoBehaviour
 ```csharp
 public class NaughtyComponent : MonoBehaviour
 {
-	[ProgressBar("Health", 300, EColor.Red)]
+	// name, maxValue, r,g,b,(a)
+	[ProgressBar("Health", 300, 1f, 0f, 0.247f)] // Red
 	public int health = 250;
 
-	[ProgressBar("Mana", 100, EColor.Blue)]
+	[ProgressBar("Mana", 100, 0f, 0f, 1f)] // Blue
 	public int mana = 25;
 
-	[ProgressBar("Stamina", 200, EColor.Green)]
+	[ProgressBar("Stamina", 200, 0.384f, 0.784f, 0.310f)] // Green
 	public int stamina = 150;
 }
 ```
