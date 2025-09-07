@@ -34,10 +34,11 @@ namespace NaughtyAttributes.Editor
                 curveRangeAttribute.Max.x - curveRangeAttribute.Min.x,
                 curveRangeAttribute.Max.y - curveRangeAttribute.Min.y);
 
+            var color = curveRangeAttribute.HasColor ? curveRangeAttribute.Color : Color.green;
             EditorGUI.CurveField(
                 rect,
                 property,
-                curveRangeAttribute.Color == EColor.Clear ? Color.green : curveRangeAttribute.Color.GetColor(),
+                color,
                 curveRanges,
                 label);
 

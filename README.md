@@ -11,9 +11,11 @@ Tip: To make all meta attributes work everywhere (including nested types), inher
 
 # NaughtyAttributes
 
-## Roadmap / TODO
-
-- TableList attribute: a table-style view in the Inspector (columns, headers, per-row actions). Implementation will respect the upstream API/design and include clear credit to the original author (D. Brizov) with links to the upstream repository.
+### ROADMAP TODO (fork specifics)
+- ReorderableList: fix not re-drawing after expand/collapse; align dropdown arrow with current indent level.
+- Foldout: align foldout (triangle) with indent, consistent with Unity default.
+- Add 2D array visualization/editor support (currently missing for e.g. int[,], float[,]).
+- SerializeReference interface picker: allow selecting implementations (search derived types) similar to nested class selector UX.
 
 [![Unity 2019.4+](https://img.shields.io/badge/unity-2019.4%2B-blue.svg)](https://unity3d.com/get-unity/download)
 [![openupm](https://img.shields.io/npm/v/com.dbrizov.naughtyattributes?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.dbrizov.naughtyattributes/)
@@ -45,12 +47,6 @@ openupm add com.dbrizov.naughtyattributes
 ## Documentation
 - [Documentation](https://dbrizov.github.io/na-docs/)
 - [Documentation Repo](https://github.com/dbrizov/na-docs)
-
-## Support
-NaughtyAttributes is an open-source project that I am developing in my free time. If you like it you can support me by donating.
-
-- [PayPal](https://paypal.me/dbrizov)
-- [Buy Me A Coffee](https://www.buymeacoffee.com/dbrizov)
 
 # Overview
 
@@ -212,13 +208,13 @@ public class NaughtyComponent : MonoBehaviour
 ```csharp
 public class NaughtyComponent : MonoBehaviour
 {
-	[HorizontalLine(color: EColor.Red)]
+	[HorizontalLine(1f, 0f, 0.247f)] // Red
 	public int red;
 
-	[HorizontalLine(color: EColor.Green)]
+	[HorizontalLine(0.384f, 0.784f, 0.310f)] // Green
 	public int green;
 
-	[HorizontalLine(color: EColor.Blue)]
+	[HorizontalLine(0f, 0.529f, 0.741f)] // Blue
 	public int blue;
 }
 ```
@@ -290,13 +286,14 @@ public class NaughtyComponent : MonoBehaviour
 ```csharp
 public class NaughtyComponent : MonoBehaviour
 {
-	[ProgressBar("Health", 300, EColor.Red)]
+	// name, maxValue, r,g,b,(a)
+	[ProgressBar("Health", 300, 1f, 0f, 0.247f)] // Red
 	public int health = 250;
 
-	[ProgressBar("Mana", 100, EColor.Blue)]
+	[ProgressBar("Mana", 100, 0f, 0f, 1f)] // Blue
 	public int mana = 25;
 
-	[ProgressBar("Stamina", 200, EColor.Green)]
+	[ProgressBar("Stamina", 200, 0.384f, 0.784f, 0.310f)] // Green
 	public int stamina = 150;
 }
 ```
