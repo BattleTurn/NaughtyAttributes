@@ -32,7 +32,6 @@ namespace NaughtyAttributes.Editor
                     drawElementCallback = (Rect r, int index, bool isActive, bool isFocused) =>
                     {
                         if (!arrayProp.isExpanded) return;
-
                         SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
                         r.y += 1.0f;
                         r.x += 10.0f;
@@ -44,24 +43,21 @@ namespace NaughtyAttributes.Editor
                     elementHeightCallback = (int index) =>
                     {
                         if (!arrayProp.isExpanded) return 0f;
-
                         return EditorGUI.GetPropertyHeight(arrayProp.GetArrayElementAtIndex(index)) + 4.0f;
                     },
 
                     onAddCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoAddButton(l),
                     onRemoveCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoRemoveButton(l),
-                };
-
-                reorderableList.drawNoneElementCallback = (Rect rr) =>
-                {
-                    if (!arrayProp.isExpanded) return;
-                    ReorderableList.defaultBehaviours.DrawNoneElement(rr, reorderableList.draggable);
-                };
-
-                reorderableList.drawFooterCallback = (Rect fr) =>
-                {
-                    if (!arrayProp.isExpanded) return;
-                    ReorderableList.defaultBehaviours.DrawFooter(fr, reorderableList);
+                    drawNoneElementCallback = (Rect rr) =>
+                    {
+                        if (!arrayProp.isExpanded) return;
+                        ReorderableList.defaultBehaviours.DrawNoneElement(rr, reorderableList.draggable);
+                    },
+                    drawFooterCallback = (Rect fr) =>
+                    {
+                        if (!arrayProp.isExpanded) return;
+                        ReorderableList.defaultBehaviours.DrawFooter(fr, reorderableList);
+                    },
                 };
 
                 _arrayLists[key] = reorderableList;
@@ -73,7 +69,17 @@ namespace NaughtyAttributes.Editor
             // If caller passes default, reserve exact height and indent to align with surrounding properties
             if (rect == default)
             {
-                float listHeight = reorderableList.GetHeight();
+                float listHeight;
+                if (!arrayProp.isExpanded)
+                {
+                    reorderableList.elementHeight = 0f;
+                    // Always use header height + small gap for collapsed lists
+                    listHeight = EditorGUIUtility.singleLineHeight + 6f;
+                }
+                else
+                {
+                    listHeight = reorderableList.GetHeight();
+                }
                 Rect rr = EditorGUILayout.GetControlRect(false, listHeight);
                 rr = EditorGUI.IndentedRect(rr);
                 reorderableList.DoList(rr);
@@ -81,7 +87,11 @@ namespace NaughtyAttributes.Editor
             else
             {
                 // Non-layout path when caller already has a rect
-                reorderableList.DoList(rect);
+                Rect rr = rect;
+                rr.height = arrayProp.isExpanded
+                    ? reorderableList.GetHeight()
+                    : EditorGUIUtility.singleLineHeight + 4f;
+                reorderableList.DoList(rr);
             }
         }
 
@@ -98,13 +108,17 @@ namespace NaughtyAttributes.Editor
             float arrowInset = isNested ? -(4f * arrayProp.depth) : 11f;
             float arrowSize = EditorGUIUtility.singleLineHeight;
             float arrowY = r.y + (r.height - arrowSize) * 0.5f;
-            Rect foldRect = new Rect(r.x + arrowInset, arrowY, 0, r.height);
+            Rect foldRect = new Rect(r.x + arrowInset, arrowY, 14f, r.height);
 
             bool lastExpanded = arrayProp.isExpanded;
             arrayProp.isExpanded = EditorGUI.Foldout(foldRect, arrayProp.isExpanded, GUIContent.none, true);
 
             if (lastExpanded != arrayProp.isExpanded)
             {
+                // Clear cache for this list so height/layout is recalculated immediately
+                var so = arrayProp.serializedObject;
+                var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
+                _arrayLists.Remove(key);
                 InternalEditorUtility.RepaintAllViews();
             }
 
