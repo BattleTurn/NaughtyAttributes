@@ -113,6 +113,7 @@ namespace NaughtyAttributes.Editor
             }
         }
 
+
         /// <summary>
         /// Draw a property but ignore foldout grouping for this call (used by Foldout validator when drawing grouped children).
         /// </summary>
@@ -290,6 +291,25 @@ namespace NaughtyAttributes.Editor
         {
             // Detect if there is any custom PropertyDrawer (DrawerAttribute subclass) so we let Unity handle full height.
             bool hasCustomDrawer = PropertyUtility.GetAttributes<DrawerAttribute>(property)?.Length > 0;
+            if (!hasCustomDrawer)
+            {
+                // Generic, future‑proof detection of ANY external Unity PropertyDrawer:
+                // 1) Attribute-based drawers (field has a PropertyAttribute with a corresponding CustomPropertyDrawer)
+                // 2) Type-based drawers (field type itself has a CustomPropertyDrawer)
+                var owner = PropertyUtility.GetTargetObjectWithProperty(property);
+                var fi = owner != null ? ReflectionUtility.GetField(owner, property.name) : null;
+                if (fi != null)
+                {
+                    bool attrDrawer = HasExternalUnityPropertyDrawer(fi);
+                    bool typeDrawer = FieldTypeHasCustomDrawer(fi.FieldType);
+                    // Removed hardcoded attribute name checks; now relies solely on general detection
+                    // for any external PropertyAttribute or field type with a custom PropertyDrawer.
+                    if (attrDrawer || typeDrawer)
+                    {
+                        hasCustomDrawer = true;
+                    }
+                }
+            }
             bool includeChildren = false; // default for performance
             float h;
             if (hasCustomDrawer)
@@ -323,6 +343,100 @@ namespace NaughtyAttributes.Editor
                 EditorGUI.EndProperty();
                 return changed;
             }
+        }
+
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // External PropertyDrawer detection (attribute + type) — cached
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        private static bool _drawerCacheBuilt;
+        private static readonly HashSet<Type> _attrDrawerTargets = new HashSet<Type>();
+        private static readonly HashSet<Type> _typeDrawerTargets = new HashSet<Type>();
+
+        private static void BuildExternalDrawerCache()
+        {
+            if (_drawerCacheBuilt) return;
+            _drawerCacheBuilt = true;
+            try
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var asm in assemblies)
+                {
+                    Type[] types;
+                    try { types = asm.GetTypes(); }
+                    catch { continue; }
+                    foreach (var t in types)
+                    {
+                        if (t == null) continue;
+                        if (t.IsAbstract) continue;
+                        if (!typeof(PropertyDrawer).IsAssignableFrom(t)) continue;
+                        // Gather all CustomPropertyDrawer attributes on this drawer
+                        var cpds = t.GetCustomAttributes(true).Where(a => a.GetType().Name == "CustomPropertyDrawer").ToArray();
+                        if (cpds.Length == 0) continue;
+                        foreach (var cpd in cpds)
+                        {
+                            // Unity's CustomPropertyDrawer has internal fields: m_Type, m_UseForChildren
+                            var cpdType = cpd.GetType();
+                            var fType = cpdType.GetField("m_Type", BindingFlags.NonPublic | BindingFlags.Instance);
+                            var fUseChildren = cpdType.GetField("m_UseForChildren", BindingFlags.NonPublic | BindingFlags.Instance);
+                            if (fType == null) continue;
+                            var target = fType.GetValue(cpd) as Type;
+                            if (target == null) continue;
+                            bool useChildren = false;
+                            if (fUseChildren != null)
+                            {
+                                try { useChildren = (bool)fUseChildren.GetValue(cpd); } catch { }
+                            }
+
+                            if (typeof(PropertyAttribute).IsAssignableFrom(target))
+                            {
+                                _attrDrawerTargets.Add(target);
+                            }
+                            else
+                            {
+                                _typeDrawerTargets.Add(target);
+                                if (useChildren)
+                                {
+                                    // Include derived types if requested
+                                    foreach (var dt in types)
+                                    {
+                                        if (dt == null || dt == target) continue;
+                                        if (target.IsAssignableFrom(dt)) _typeDrawerTargets.Add(dt);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* swallow – cache best effort */ }
+        }
+
+        private static bool HasExternalUnityPropertyDrawer(FieldInfo fi)
+        {
+            if (fi == null) return false;
+            BuildExternalDrawerCache();
+            // Any non-Naughty PropertyAttribute (built-in or custom) is fine – Unity will merge them; we only need to know if a drawer exists.
+            foreach (var attr in fi.GetCustomAttributes(true))
+            {
+                var at = attr.GetType();
+                if (at.Namespace != null && at.Namespace.StartsWith("NaughtyAttributes")) continue; // internal handled elsewhere
+                if (typeof(PropertyAttribute).IsAssignableFrom(at))
+                {
+                    if (_attrDrawerTargets.Contains(at)) return true; // explicit drawer
+                    // Even without an explicit drawer mapping, still allow default PropertyField so built-in behavior (e.g. Range slider) works.
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool FieldTypeHasCustomDrawer(Type fieldType)
+        {
+            if (fieldType == null) return false;
+            BuildExternalDrawerCache();
+            return _typeDrawerTargets.Contains(fieldType);
         }
 
         // ─────────────────────────────────────────────────────────────────────────────
@@ -437,11 +551,25 @@ namespace NaughtyAttributes.Editor
                 {
                     // Serialized: use relative path from the container property
                     SerializedProperty child = containerProp.FindPropertyRelative(fi.Name);
-                    if (child != null && child.propertyType != SerializedPropertyType.Generic || child.hasVisibleChildren || child.isArray)
+                    if (child == null)
+                    {
+                        // Field is not serialized or name mismatch, skip
+                        continue;
+                    }
+
+                    // Only draw if property is visible
+                    if (!child.hasVisibleChildren && child.propertyType == SerializedPropertyType.Generic && !child.isArray)
+                    {
+                        // Generic type with no children and not an array, skip
+                        continue;
+                    }
+
+                    // Draw property, include children if it has them
+                    if (child.hasVisibleChildren || child.isArray || child.propertyType == SerializedPropertyType.Generic)
                     {
                         PropertyField_Layout(child, includeChildren: true);
                     }
-                    else if (child != null) // still draw if simple leaf
+                    else
                     {
                         PropertyField_Layout(child, includeChildren: false);
                     }
