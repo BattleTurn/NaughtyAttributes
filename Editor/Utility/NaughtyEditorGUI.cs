@@ -551,11 +551,25 @@ namespace NaughtyAttributes.Editor
                 {
                     // Serialized: use relative path from the container property
                     SerializedProperty child = containerProp.FindPropertyRelative(fi.Name);
-                    if (child != null && child.propertyType != SerializedPropertyType.Generic || child.hasVisibleChildren || child.isArray)
+                    if (child == null)
+                    {
+                        // Field is not serialized or name mismatch, skip
+                        continue;
+                    }
+
+                    // Only draw if property is visible
+                    if (!child.hasVisibleChildren && child.propertyType == SerializedPropertyType.Generic && !child.isArray)
+                    {
+                        // Generic type with no children and not an array, skip
+                        continue;
+                    }
+
+                    // Draw property, include children if it has them
+                    if (child.hasVisibleChildren || child.isArray || child.propertyType == SerializedPropertyType.Generic)
                     {
                         PropertyField_Layout(child, includeChildren: true);
                     }
-                    else if (child != null) // still draw if simple leaf
+                    else
                     {
                         PropertyField_Layout(child, includeChildren: false);
                     }
