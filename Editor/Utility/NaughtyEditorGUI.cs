@@ -32,6 +32,11 @@ namespace NaughtyAttributes.Editor
         /// Instead, we draw this node only, then manually handle its children to ensure nested
         /// members (including non-serialized extras) are processed and ordered like in code.
         /// </summary>
+        /// <summary>
+        /// Draw a property using the Naughty pipeline. We DO NOT use Unity's built-in recursion.
+        /// Instead, we draw this node only, then manually handle its children to ensure nested
+        /// members (including non-serialized extras) are processed and ordered like in code.
+        /// </summary>
         public static void PropertyField_Layout(SerializedProperty property, bool includeChildren)
         {
             // One-pass meta processing: visibility, grouping, enabled
@@ -43,7 +48,14 @@ namespace NaughtyAttributes.Editor
             // >>> Special-case attributes (e.g., [ReorderableList]) take over drawing
             if (TryDrawSpecialCase(property)) return;
 
-            // Force built-in PropertyDrawer path for [Expandable] so its custom height + child drawing works.
+            // >>> Arrays/Lists (except string): draw with our ReorderableList helper
+            if (property.isArray && property.propertyType != SerializedPropertyType.String)
+            {
+                ReorderableEditorGUI.CreateReorderableList(default, property);
+                return;
+            }
+
+            // Force built-in PropertyDrawer path for [Expandable]
             if (PropertyUtility.GetAttribute<ExpandableAttribute>(property) != null)
             {
                 EditorGUILayout.PropertyField(property, includeChildren: false); // drawer handles expansion & children
@@ -52,15 +64,42 @@ namespace NaughtyAttributes.Editor
 
             if (meta.consumedByGroup) return; // group already drew content
 
-            // Arrays/Lists (except string): draw with our ReorderableList helper in layout mode.
-            // Let the list compute its own height; don't pre-reserve a control rect here.
-            if (property.isArray && property.propertyType != SerializedPropertyType.String)
+            // === Case: Generic object (class/struct, not array) ===
+            if (property.propertyType == SerializedPropertyType.Generic && !property.isArray)
             {
-                ReorderableEditorGUI.CreateReorderableList(default, property);
-                // EditorArrayLayout(property);
-                return; // stop here; don't run our manual recursion for this field
+                // Chỉ vẽ foldout + label cho parent
+                property.isExpanded = EditorGUILayout.Foldout(property.isExpanded, property.displayName, true);
+
+                if (property.isExpanded && includeChildren)
+                {
+                    object instance = PropertyUtility.GetTargetObjectOfProperty(property);
+                    if (instance != null)
+                    {
+                        int savedIndent = EditorGUI.indentLevel;
+                        EditorGUI.indentLevel = savedIndent + 1;
+                        DrawMembersInDeclaredOrder(property, instance);
+                        EditorGUI.indentLevel = savedIndent;
+                    }
+                    else
+                    {
+                        // fallback nếu không resolve được instance
+                        int savedIndent = EditorGUI.indentLevel;
+                        EditorGUI.indentLevel = savedIndent + 1;
+
+                        IterateChildren(property, child =>
+                        {
+                            if (child.name == "m_Script") return;
+                            PropertyField_Layout(child.Copy(), true);
+                        });
+
+                        EditorGUI.indentLevel = savedIndent;
+                    }
+                }
+
+                return;
             }
 
+            // === Default: draw node như thường ===
             var (owner, field) = ResolveOwnerAndField(property);
 
             bool enabled = meta.enabled;
@@ -76,37 +115,25 @@ namespace NaughtyAttributes.Editor
 
             // 3) Children
             if (!includeChildren || !property.isExpanded) return;
+            if (!property.hasVisibleChildren) return;
 
-            // >>> Arrays/Lists trước – vì chúng có cách vẽ riêng
-            if (IsArrayLike(property))
-            {
-                DrawArrayChildren(property);
-                return;
-            }
-
-            if (!property.hasVisibleChildren)
-                return;
-
-            // For managed classes/structs, draw members in code order (serialized + ShowNonSerialized mixed).
-            object instance = PropertyUtility.GetTargetObjectOfProperty(property);
-            if (instance != null)
+            object inst = PropertyUtility.GetTargetObjectOfProperty(property);
+            if (inst != null)
             {
                 int savedIndent = EditorGUI.indentLevel;
-                // BỎ auto +1 indent cho nested managed class members để label không bị thụt sâu hơn field bình thường
-                EditorGUI.indentLevel = savedIndent; 
-                DrawMembersInDeclaredOrder(property, instance);
+                EditorGUI.indentLevel = savedIndent + 1;
+                DrawMembersInDeclaredOrder(property, inst);
                 EditorGUI.indentLevel = savedIndent;
             }
             else
             {
-                // Fallback: traverse serialized children if we fail to resolve instance
                 int savedIndent = EditorGUI.indentLevel;
                 EditorGUI.indentLevel = savedIndent + 1;
 
                 IterateChildren(property, child =>
                 {
                     if (child.name == "m_Script") return;
-                    PropertyField_Layout(child.Copy(), includeChildren: true);
+                    PropertyField_Layout(child.Copy(), true);
                 });
 
                 EditorGUI.indentLevel = savedIndent;
@@ -149,7 +176,7 @@ namespace NaughtyAttributes.Editor
         }
 
         // Draw only a static group header (no arrow). Supports expanding to boxStyle padding.
-    public static Rect DrawGroupHeader(string label, int itemCount, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        public static Rect DrawGroupHeader(string label, int itemCount, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
         {
             float startX;
             Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
@@ -160,7 +187,7 @@ namespace NaughtyAttributes.Editor
         }
 
         // Draw a foldout-enabled header (arrow + label) with padding expansion support.
-    public static Rect DrawExtendableGroupHeader(string label, int itemCount, ref bool expanded, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
+        public static Rect DrawExtendableGroupHeader(string label, int itemCount, ref bool expanded, GUIStyle boxStyle = null, float labelOffsetX = 4f, bool expandBackground = true, bool useIndent = true, bool nestedContainer = false)
         {
             float startX;
             Rect bg = PrepareGroupHeader(boxStyle, labelOffsetX, expandBackground, useIndent, nestedContainer, out startX);
@@ -217,9 +244,9 @@ namespace NaughtyAttributes.Editor
         // ─────────────────────────────────────────────────────────────────────────────
         // Group body helpers (shared BoxGroup & Foldout)
         // ─────────────────────────────────────────────────────────────────────────────
-    private static int _groupBodyDepth;
-    private static int _suppressAutoMemberIndentDepth; // skip +1 indent for nested group bodies
-    private static Stack<int> _indentRestoreStack = new Stack<int>();
+        private static int _groupBodyDepth;
+        private static int _suppressAutoMemberIndentDepth; // skip +1 indent for nested group bodies
+        private static Stack<int> _indentRestoreStack = new Stack<int>();
 
         public static void BeginGroupBody(bool nestedContainer, GUIStyle boxStyle)
         {
@@ -565,7 +592,14 @@ namespace NaughtyAttributes.Editor
                     }
 
                     // Draw property, include children if it has them
-                    if (child.hasVisibleChildren || child.isArray || child.propertyType == SerializedPropertyType.Generic)
+                    if (child.isArray && child.propertyType != SerializedPropertyType.String)
+                    {
+                        ReorderableEditorGUI.CreateReorderableList(default, child);
+                        continue;
+                    }
+
+                    // Draw property, include children if it has them
+                    if (child.hasVisibleChildren || child.propertyType == SerializedPropertyType.Generic)
                     {
                         PropertyField_Layout(child, includeChildren: true);
                     }
