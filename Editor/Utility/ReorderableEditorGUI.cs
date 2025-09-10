@@ -10,6 +10,8 @@ namespace NaughtyAttributes.Editor
     {
         private static readonly Dictionary<ListKey, ReorderableList> _arrayLists = new Dictionary<ListKey, ReorderableList>();
 
+        private const float INDENT_WIDTH = 15.0f;
+
         private struct ListKey
         {
             public int id;
@@ -22,20 +24,30 @@ namespace NaughtyAttributes.Editor
             ReorderableList reorderableList = null;
             var so = arrayProp.serializedObject;
 
+            Rect headerRect = new Rect();
+
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
             if (!_arrayLists.ContainsKey(key))
             {
                 reorderableList = new ReorderableList(so, arrayProp, true, true, true, true)
                 {
-                    drawHeaderCallback = (Rect r) => { DrawHeader(arrayProp, r); },
+                    drawHeaderCallback = (Rect r) => {
+                        // Adjust header rect for indent
+                        int indentLevel = EditorGUI.indentLevel;
+                        float indent = indentLevel * INDENT_WIDTH;
+                        headerRect = new Rect(r.x + indent, r.y, r.width - indent, r.height);
+                        DrawHeader(arrayProp, headerRect);
+                    },
 
                     drawElementCallback = (Rect r, int index, bool isActive, bool isFocused) =>
                     {
                         if (!arrayProp.isExpanded) return;
                         SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
+                        int indentLevel = EditorGUI.indentLevel;
+                        float indent = indentLevel * INDENT_WIDTH;
                         r.y += 1.0f;
-                        r.x += 10.0f;
-                        r.width -= 10.0f;
+                        r.x += 10.0f + indent;
+                        r.width -= 10.0f + indent;
 
                         EditorGUI.PropertyField(new Rect(r.x, r.y, r.width, EditorGUIUtility.singleLineHeight), element, true);
                     },
@@ -51,12 +63,18 @@ namespace NaughtyAttributes.Editor
                     drawNoneElementCallback = (Rect rr) =>
                     {
                         if (!arrayProp.isExpanded) return;
-                        ReorderableList.defaultBehaviours.DrawNoneElement(rr, reorderableList.draggable);
+                        int indentLevel = EditorGUI.indentLevel;
+                        float indent = indentLevel * INDENT_WIDTH;
+                        Rect indentedRect = new Rect(rr.x + indent, rr.y, rr.width - indent, rr.height);
+                        ReorderableList.defaultBehaviours.DrawNoneElement(indentedRect, reorderableList.draggable);
                     },
                     drawFooterCallback = (Rect fr) =>
                     {
                         if (!arrayProp.isExpanded) return;
-                        ReorderableList.defaultBehaviours.DrawFooter(fr, reorderableList);
+                        int indentLevel = EditorGUI.indentLevel;
+                        float indent = indentLevel * INDENT_WIDTH;
+                        Rect indentedRect = new Rect(fr.x + indent, fr.y, fr.width - indent, fr.height);
+                        ReorderableList.defaultBehaviours.DrawFooter(indentedRect, reorderableList);
                     },
                 };
 
@@ -102,32 +120,33 @@ namespace NaughtyAttributes.Editor
 
         private static void DrawHeader(SerializedProperty arrayProp, Rect r)
         {
-            // Use the rect provided by ReorderableList (already aligned with current indent)
-            // Slightly smaller inset for nested properties to pull header a bit outward
-            bool isNested = arrayProp.depth > 0;
-            float arrowInset = isNested ? -(4f * arrayProp.depth) : 11f;
-            float arrowSize = EditorGUIUtility.singleLineHeight;
-            float arrowY = r.y + (r.height - arrowSize) * 0.5f;
-            Rect foldRect = new Rect(r.x + arrowInset, arrowY, 14f, r.height);
+            string label = $"{arrayProp.displayName}: {arrayProp.arraySize}";
 
+            // Create a consistent rect with 4px left padding regardless of nesting level
+            // Use the original rect 'r' instead of IndentedRect to avoid cumulative indentation
+            Rect headerRect = new Rect(r.x, r.y, r.width, r.height);
+            headerRect.x += INDENT_WIDTH;
+
+            GUI.Label(headerRect, GUIContent.none);
             bool lastExpanded = arrayProp.isExpanded;
-            arrayProp.isExpanded = EditorGUI.Foldout(foldRect, arrayProp.isExpanded, GUIContent.none, true);
+            if (arrayProp.propertyPath.Contains('.'))
+            {
+                string[] pathParts = arrayProp.propertyPath.Split('.');
+                float indent = EditorGUI.indentLevel * INDENT_WIDTH + INDENT_WIDTH * (pathParts.Length - 1);
+                headerRect.x -= indent;
+                headerRect.width += indent;
+                // Nested array: use a toggle-style foldout to avoid excessive indentation
+            }
 
+            arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, label, true);
+            
             if (lastExpanded != arrayProp.isExpanded)
             {
-                // Clear cache for this list so height/layout is recalculated immediately
                 var so = arrayProp.serializedObject;
                 var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
                 _arrayLists.Remove(key);
                 InternalEditorUtility.RepaintAllViews();
             }
-
-            // Label sits just right of the arrow
-            const float labelGap = 6f;
-            float labelX = foldRect.xMax + labelGap;
-            Rect labelRect = new Rect(labelX, r.y, r.width - (labelX - r.x), r.height);
-            EditorGUI.LabelField(labelRect, $"{arrayProp.displayName}: {arrayProp.arraySize}");
-
         }
     }
 }

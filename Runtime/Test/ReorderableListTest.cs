@@ -16,6 +16,8 @@ namespace NaughtyAttributes.Test
         [Space]
         [SerializeField]
         private Nested nested;
+        [SerializeField]
+        private Nested2 nested2;
         [Space]
         [Space]
         [Space]
@@ -42,5 +44,14 @@ namespace NaughtyAttributes.Test
     {
         [SerializeField]
         private List<int> _ints;
+    }
+
+    [System.Serializable]
+    sealed class Nested2
+    {
+        [SerializeField]
+        private List<int> _ints;
+        [SerializeField]
+        private Nested _nested;
     }
 }
