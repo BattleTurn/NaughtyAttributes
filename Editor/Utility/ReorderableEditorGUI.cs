@@ -287,14 +287,14 @@ namespace NaughtyAttributes.Editor
             }
 
             // Fallback for Object type
-            return elementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object;
+            return elementType == typeof(Object) && obj is Object;
         }
 
         private static bool CanExtractFromGameObject(GameObject go, Type elementType)
         {
             if (elementType == typeof(Transform)) return true;
             if (elementType == typeof(GameObject)) return true;
-            if (elementType == typeof(UnityEngine.Object)) return true;
+            if (elementType == typeof(Object)) return true;
             if (typeof(Component).IsAssignableFrom(elementType))
             {
                 return go.GetComponent(elementType) != null;
@@ -343,7 +343,7 @@ namespace NaughtyAttributes.Editor
             {
                 if (elementType == typeof(Transform)) return go.transform;
                 if (elementType == typeof(GameObject)) return go;
-                if (elementType == typeof(UnityEngine.Object)) return go;
+                if (elementType == typeof(Object)) return go;
                 if (typeof(Component).IsAssignableFrom(elementType))
                 {
                     return go.GetComponent(elementType);
@@ -351,7 +351,7 @@ namespace NaughtyAttributes.Editor
             }
 
             // Object fallback
-            if (elementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object)
+            if (elementType == typeof(Object) && obj is Object)
                 return obj;
 
             return null;
