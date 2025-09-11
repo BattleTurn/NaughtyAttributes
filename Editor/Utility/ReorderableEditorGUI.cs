@@ -161,63 +161,9 @@ namespace NaughtyAttributes.Editor
             if (evt == null || evt.type == EventType.Used) return;
             if (!dropRect.Contains(evt.mousePosition)) return;
 
-            // FIRST: Quick check if this is an ObjectReference array
-            bool isObjectReferenceArray = false;
-            if (arrayProp.arraySize > 0)
+            // Early validation - only handle ObjectReference arrays
+            if (!IsObjectReferenceArray(arrayProp))
             {
-                var firstElement = arrayProp.GetArrayElementAtIndex(0);
-                isObjectReferenceArray = (firstElement.propertyType == SerializedPropertyType.ObjectReference);
-            }
-            else
-            {
-                // For empty arrays, use heuristic based on property path and field name
-                var displayName = arrayProp.displayName.ToLower();
-                var propertyPath = arrayProp.propertyPath.ToLower();
-
-                // Common patterns for ObjectReference arrays
-                bool likelyObjectReference =
-                    displayName.Contains("transform") ||
-                    displayName.Contains("gameobject") ||
-                    displayName.Contains("component") ||
-                    displayName.Contains("behaviour") ||
-                    displayName.Contains("renderer") ||
-                    displayName.Contains("collider") ||
-                    displayName.Contains("rigidbody") ||
-                    displayName.Contains("material") ||
-                    displayName.Contains("texture") ||
-                    displayName.Contains("sprite") ||
-                    displayName.Contains("audio") ||
-                    displayName.Contains("prefab") ||
-                    displayName.Contains("asset");
-
-                // Common patterns for non-ObjectReference arrays  
-                bool likelyValueType =
-                    displayName.Contains("int") ||
-                    displayName.Contains("float") ||
-                    displayName.Contains("vector") ||
-                    displayName.Contains("string") ||
-                    displayName.Contains("bool") ||
-                    displayName.Contains("struct") ||
-                    displayName.Contains("enum");
-
-                if (likelyValueType)
-                {
-                    isObjectReferenceArray = false;
-                }
-                else if (likelyObjectReference)
-                {
-                    isObjectReferenceArray = true;
-                }
-                else
-                {
-                    // Unknown - be conservative and assume not ObjectReference
-                    isObjectReferenceArray = false;
-                }
-            }
-
-            if (!isObjectReferenceArray)
-            {
-                // Not an ObjectReference array - reject drag but don't consume event
                 if (evt.type == EventType.DragUpdated)
                 {
                     DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
@@ -225,186 +171,199 @@ namespace NaughtyAttributes.Editor
                 return;
             }
 
+            var dragged = DragAndDrop.objectReferences;
+            if (dragged == null || dragged.Length == 0) return;
+
             switch (evt.type)
             {
                 case EventType.DragUpdated:
-                case EventType.DragPerform:
-                    var dragged = DragAndDrop.objectReferences;
-                    if (dragged == null || dragged.Length == 0) return;
-
-                    // Get element type to check compatibility
-                    Type expectedElementType = arrayProp.GetElementType();
-
-                    // Check if any dragged object is compatible
-                    bool hasCompatibleObject = false;
-                    if (expectedElementType != null)
-                    {
-                        foreach (var obj in dragged)
-                        {
-                            if (obj == null) continue;
-
-                            Object targetObject = obj;
-                            bool isCompatible = false;
-
-                            // Direct type check first
-                            if (expectedElementType.IsAssignableFrom(obj.GetType()))
-                            {
-                                isCompatible = true;
-                            }
-                            // GameObject component extraction
-                            else if (obj is GameObject go)
-                            {
-                                if (expectedElementType == typeof(Transform))
-                                {
-                                    isCompatible = true; // Transform always exists
-                                }
-                                else if (typeof(Component).IsAssignableFrom(expectedElementType))
-                                {
-                                    var component = go.GetComponent(expectedElementType);
-                                    if (component != null)
-                                    {
-                                        isCompatible = true;
-                                    }
-                                }
-                                else if (expectedElementType == typeof(GameObject))
-                                {
-                                    isCompatible = true;
-                                }
-                                else if (expectedElementType == typeof(UnityEngine.Object))
-                                {
-                                    isCompatible = true; // Fallback case
-                                }
-                            }
-                            // Special fallback for Object type only if it's actually a Unity Object
-                            else if (expectedElementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object)
-                            {
-                                isCompatible = true;
-                            }
-
-                            if (isCompatible)
-                            {
-                                hasCompatibleObject = true;
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // No exact type info but confirmed ObjectReference - be conservative
-                        foreach (var obj in dragged)
-                        {
-                            if (obj is GameObject || obj is Transform || obj is Component)
-                            {
-                                hasCompatibleObject = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Set appropriate visual mode
-                    DragAndDrop.visualMode = hasCompatibleObject ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
-
-                    if (evt.type == EventType.DragPerform && hasCompatibleObject)
-                    {
-                        DragAndDrop.AcceptDrag();
-
-                        // Record undo
-                        Undo.RecordObject(arrayProp.serializedObject.targetObject, "Drag & Drop to List");
-
-                        HashSet<Object> existing = new HashSet<Object>();
-                        for (int i = 0; i < arrayProp.arraySize; i++)
-                        {
-                            var elem = arrayProp.GetArrayElementAtIndex(i);
-                            if (elem.propertyType == SerializedPropertyType.ObjectReference && elem.objectReferenceValue != null)
-                                existing.Add(elem.objectReferenceValue);
-                        }
-
-                        int addedCount = 0;
-
-                        // Get element type from existing element or field info
-                        Type elementType = arrayProp.GetElementType();
-
-                        foreach (var obj in dragged)
-                        {
-                            if (obj == null) continue;
-
-                            Object targetObject = obj;
-                            bool shouldAdd = false;
-
-                            if (elementType != null)
-                            {
-                                // Direct type check first
-                                if (elementType.IsAssignableFrom(obj.GetType()))
-                                {
-                                    targetObject = obj;
-                                    shouldAdd = true;
-                                }
-                                // GameObject component extraction
-                                else if (obj is GameObject go)
-                                {
-                                    if (elementType == typeof(Transform))
-                                    {
-                                        targetObject = go.transform;
-                                        shouldAdd = true;
-                                    }
-                                    else if (typeof(Component).IsAssignableFrom(elementType))
-                                    {
-                                        var component = go.GetComponent(elementType);
-                                        if (component != null)
-                                        {
-                                            targetObject = component;
-                                            shouldAdd = true;
-                                        }
-                                    }
-                                    else if (elementType == typeof(GameObject))
-                                    {
-                                        targetObject = go;
-                                        shouldAdd = true;
-                                    }
-                                    else if (elementType == typeof(UnityEngine.Object))
-                                    {
-                                        targetObject = go;
-                                        shouldAdd = true;
-                                    }
-                                }
-                                // Object fallback
-                                else if (elementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object)
-                                {
-                                    targetObject = obj;
-                                    shouldAdd = true;
-                                }
-                            }
-                            else
-                            {
-                                // No elementType info - only allow direct UnityEngine.Object assignments
-                                if (obj is UnityEngine.Object)
-                                {
-                                    targetObject = obj;
-                                    shouldAdd = true;
-                                }
-                            }
-
-                            if (!shouldAdd || existing.Contains(targetObject)) continue;
-
-                            arrayProp.arraySize++;
-                            var newElement = arrayProp.GetArrayElementAtIndex(arrayProp.arraySize - 1);
-                            if (newElement.propertyType == SerializedPropertyType.ObjectReference)
-                            {
-                                newElement.objectReferenceValue = targetObject;
-                                existing.Add(targetObject);
-                                addedCount++;
-                            }
-                        }
-
-                        arrayProp.serializedObject.ApplyModifiedProperties();
-                    }
-
-                    // Only use event for DragPerform
-                    if (evt.type == EventType.DragPerform)
-                    {
-                        evt.Use();
-                    }
+                    HandleDragUpdated(arrayProp, dragged);
                     break;
+
+                case EventType.DragPerform:
+                    HandleDragPerform(arrayProp, dragged);
+                    evt.Use();
+                    break;
+            }
+        }
+
+        private static bool IsObjectReferenceArray(SerializedProperty arrayProp)
+        {
+            // Check existing elements first
+            if (arrayProp.arraySize > 0)
+            {
+                var firstElement = arrayProp.GetArrayElementAtIndex(0);
+                return firstElement.propertyType == SerializedPropertyType.ObjectReference;
+            }
+
+            // For empty arrays, use name-based heuristics
+            return IsLikelyObjectReferenceArray(arrayProp.displayName);
+        }
+
+        private static bool IsLikelyObjectReferenceArray(string displayName)
+        {
+            var name = displayName.ToLower();
+
+            // Common ObjectReference patterns
+            string[] objectPatterns = {
+                "transform", "gameobject", "component", "behaviour", "renderer", 
+                "collider", "rigidbody", "material", "texture", "sprite", 
+                "audio", "prefab", "asset"
+            };
+
+            // Common value type patterns
+            string[] valuePatterns = {
+                "int", "float", "vector", "string", "bool", "struct", "enum"
+            };
+
+            foreach (var pattern in valuePatterns)
+            {
+                if (name.Contains(pattern)) return false;
+            }
+
+            foreach (var pattern in objectPatterns)
+            {
+                if (name.Contains(pattern)) return true;
+            }
+
+            // Conservative default - assume value type
+            return false;
+        }
+
+        private static void HandleDragUpdated(SerializedProperty arrayProp, Object[] dragged)
+        {
+            var elementType = arrayProp.GetElementType();
+            bool hasCompatibleObject = HasCompatibleObjects(dragged, elementType);
+            DragAndDrop.visualMode = hasCompatibleObject ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+        }
+
+        private static void HandleDragPerform(SerializedProperty arrayProp, Object[] dragged)
+        {
+            var elementType = arrayProp.GetElementType();
+            if (!HasCompatibleObjects(dragged, elementType)) return;
+
+            DragAndDrop.AcceptDrag();
+            Undo.RecordObject(arrayProp.serializedObject.targetObject, "Drag & Drop to List");
+
+            var existingObjects = GetExistingObjects(arrayProp);
+            AddCompatibleObjects(arrayProp, dragged, elementType, existingObjects);
+            
+            arrayProp.serializedObject.ApplyModifiedProperties();
+        }
+
+        private static bool HasCompatibleObjects(Object[] objects, Type elementType)
+        {
+            if (elementType == null)
+            {
+                // Fallback: accept common Unity objects
+                foreach (var obj in objects)
+                {
+                    if (obj is GameObject || obj is Transform || obj is Component)
+                        return true;
+                }
+                return false;
+            }
+
+            foreach (var obj in objects)
+            {
+                if (IsCompatibleObject(obj, elementType))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool IsCompatibleObject(Object obj, Type elementType)
+        {
+            if (obj == null) return false;
+
+            // Direct type compatibility
+            if (elementType.IsAssignableFrom(obj.GetType()))
+                return true;
+
+            // GameObject component extraction
+            if (obj is GameObject go)
+            {
+                return CanExtractFromGameObject(go, elementType);
+            }
+
+            // Fallback for Object type
+            return elementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object;
+        }
+
+        private static bool CanExtractFromGameObject(GameObject go, Type elementType)
+        {
+            if (elementType == typeof(Transform)) return true;
+            if (elementType == typeof(GameObject)) return true;
+            if (elementType == typeof(UnityEngine.Object)) return true;
+            if (typeof(Component).IsAssignableFrom(elementType))
+            {
+                return go.GetComponent(elementType) != null;
+            }
+            return false;
+        }
+
+        private static HashSet<Object> GetExistingObjects(SerializedProperty arrayProp)
+        {
+            var existing = new HashSet<Object>();
+            for (int i = 0; i < arrayProp.arraySize; i++)
+            {
+                var element = arrayProp.GetArrayElementAtIndex(i);
+                if (element.propertyType == SerializedPropertyType.ObjectReference && 
+                    element.objectReferenceValue != null)
+                {
+                    existing.Add(element.objectReferenceValue);
+                }
+            }
+            return existing;
+        }
+
+        private static void AddCompatibleObjects(SerializedProperty arrayProp, Object[] objects, Type elementType, HashSet<Object> existingObjects)
+        {
+            foreach (var obj in objects)
+            {
+                var targetObject = ExtractTargetObject(obj, elementType);
+                if (targetObject != null && !existingObjects.Contains(targetObject))
+                {
+                    AddObjectToArray(arrayProp, targetObject);
+                    existingObjects.Add(targetObject);
+                }
+            }
+        }
+
+        private static Object ExtractTargetObject(Object obj, Type elementType)
+        {
+            if (obj == null) return null;
+
+            // Direct assignment
+            if (elementType == null || elementType.IsAssignableFrom(obj.GetType()))
+                return obj;
+
+            // GameObject component extraction
+            if (obj is GameObject go)
+            {
+                if (elementType == typeof(Transform)) return go.transform;
+                if (elementType == typeof(GameObject)) return go;
+                if (elementType == typeof(UnityEngine.Object)) return go;
+                if (typeof(Component).IsAssignableFrom(elementType))
+                {
+                    return go.GetComponent(elementType);
+                }
+            }
+
+            // Object fallback
+            if (elementType == typeof(UnityEngine.Object) && obj is UnityEngine.Object)
+                return obj;
+
+            return null;
+        }
+
+        private static void AddObjectToArray(SerializedProperty arrayProp, Object targetObject)
+        {
+            arrayProp.arraySize++;
+            var newElement = arrayProp.GetArrayElementAtIndex(arrayProp.arraySize - 1);
+            if (newElement.propertyType == SerializedPropertyType.ObjectReference)
+            {
+                newElement.objectReferenceValue = targetObject;
             }
         }
     }
