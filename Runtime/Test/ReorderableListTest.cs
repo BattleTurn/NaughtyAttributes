@@ -5,12 +5,12 @@ namespace NaughtyAttributes.Test
 {
     public class ReorderableListTest : MonoBehaviour
     {
-        public int[] intArray;
         [Space]
         public List<Vector3> vectorList;
         [Space]
         [Space]
         public List<SomeStruct> structList;
+        public List<string> names = new() { "Charlie", "Alice", "Bob" };
         [Space]
         [Space]
         [Space]
@@ -30,6 +30,7 @@ namespace NaughtyAttributes.Test
         [Space]
         public List<MonoBehaviour> monoBehavioursList;
         public List<Sprite> spritesList;
+        public List<ScriptableObject> scriptableObjectsList;
     }
 
     [System.Serializable]
@@ -44,7 +45,7 @@ namespace NaughtyAttributes.Test
     sealed class Nested
     {
         [SerializeField]
-        private List<int> _ints;
+        private List<Vector2> _vector2s;
     }
 
     [System.Serializable]
