@@ -115,8 +115,24 @@ namespace NaughtyAttributes.Editor
                 }
                 Rect rr = EditorGUILayout.GetControlRect(false, listHeight);
                 rr = EditorGUI.IndentedRect(rr);
+                
+                // Handle drag BEFORE ReorderableList.DoList to take priority
+                Rect expandedDropRect = new Rect(rr.x, rr.y, rr.width, rr.height);
+                if (arrayProp.isExpanded)
+                {
+                    // For expanded lists, extend significantly up to cover header
+                    expandedDropRect.y -= EditorGUIUtility.singleLineHeight;
+                    expandedDropRect.height += EditorGUIUtility.singleLineHeight + 4f;
+                }
+                else
+                {
+                    // For collapsed lists, still extend a bit to cover header
+                    expandedDropRect.y -= 4f;
+                    expandedDropRect.height += 8f;
+                }
+                HandleDragAndDrop(arrayProp, expandedDropRect);
+                
                 reorderableList.DoList(rr);
-                HandleDragAndDrop(arrayProp, rr);
             }
             else
             {
@@ -125,8 +141,24 @@ namespace NaughtyAttributes.Editor
                 rr.height = arrayProp.isExpanded
                     ? reorderableList.GetHeight()
                     : EditorGUIUtility.singleLineHeight + 4f;
+                
+                // Handle drag BEFORE ReorderableList.DoList to take priority
+                Rect expandedDropRect = new Rect(rr.x, rr.y, rr.width, rr.height);
+                if (arrayProp.isExpanded)
+                {
+                    // For expanded lists, extend significantly up to cover header
+                    expandedDropRect.y -= EditorGUIUtility.singleLineHeight;
+                    expandedDropRect.height += EditorGUIUtility.singleLineHeight + 4f;
+                }
+                else
+                {
+                    // For collapsed lists, still extend a bit to cover header
+                    expandedDropRect.y -= 4f;
+                    expandedDropRect.height += 8f;
+                }
+                HandleDragAndDrop(arrayProp, expandedDropRect);
+                
                 reorderableList.DoList(rr);
-                HandleDragAndDrop(arrayProp, rr);
             }
         }
 
@@ -170,6 +202,7 @@ namespace NaughtyAttributes.Editor
         {
             Event evt = Event.current;
             if (evt == null || evt.type == EventType.Used) return;
+            
             if (!dropRect.Contains(evt.mousePosition)) return;
 
             // Early validation - only handle ObjectReference arrays
