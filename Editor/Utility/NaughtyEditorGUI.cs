@@ -51,7 +51,7 @@ namespace NaughtyAttributes.Editor
             // >>> Arrays/Lists (except string): draw with our ReorderableList helper
             if (property.isArray && property.propertyType != SerializedPropertyType.String)
             {
-                ReorderableEditorGUI.PropertyField(default, property);
+                ReorderableEditorGUI.CreateReorderableList(default, property);
                 return;
             }
 
@@ -451,48 +451,10 @@ namespace NaughtyAttributes.Editor
                 if (at.Namespace != null && at.Namespace.StartsWith("NaughtyAttributes")) continue; // internal handled elsewhere
                 if (typeof(PropertyAttribute).IsAssignableFrom(at))
                 {
-                    // Check if this attribute has a DecoratorDrawer instead of PropertyDrawer
-                    if (HasDecoratorDrawer(at)) continue; // DecoratorDrawers should be handled by Unity's decorator system
-                    
                     if (_attrDrawerTargets.Contains(at)) return true; // explicit drawer
                     // Even without an explicit drawer mapping, still allow default PropertyField so built-in behavior (e.g. Range slider) works.
                     return true;
                 }
-            }
-            return false;
-        }
-
-        private static bool HasDecoratorDrawer(Type attributeType)
-        {
-            BuildExternalDrawerCache();
-            
-            // Check if any DecoratorDrawer is registered for this attribute type
-            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    foreach (var type in assembly.GetTypes())
-                    {
-                        if (!typeof(DecoratorDrawer).IsAssignableFrom(type)) continue;
-                        if (type.IsAbstract) continue;
-                        
-                        var customDrawerAttrs = type.GetCustomAttributes(typeof(CustomPropertyDrawer), true);
-                        foreach (CustomPropertyDrawer drawerAttr in customDrawerAttrs)
-                        {
-                            // Use reflection to get the internal m_Type field from CustomPropertyDrawer
-                            var typeField = typeof(CustomPropertyDrawer).GetField("m_Type", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            if (typeField != null)
-                            {
-                                var drawerTargetType = typeField.GetValue(drawerAttr) as Type;
-                                if (drawerTargetType == attributeType)
-                                {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-                catch { /* ignore assembly loading issues */ }
             }
             return false;
         }
@@ -632,7 +594,7 @@ namespace NaughtyAttributes.Editor
                     // Draw property, include children if it has them
                     if (child.isArray && child.propertyType != SerializedPropertyType.String)
                     {
-                        ReorderableEditorGUI.PropertyField(default, child);
+                        ReorderableEditorGUI.CreateReorderableList(default, child);
                         continue;
                     }
 
