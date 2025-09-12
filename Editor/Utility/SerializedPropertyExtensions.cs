@@ -25,31 +25,67 @@ namespace NaughtyAttributes.Editor
                     if (fieldType != null)
                     {
                         if (fieldType.IsArray)
+                        {
                             return fieldType.GetElementType();
+                        }
 
                         if (fieldType.IsGenericType && fieldType.GetGenericArguments().Length > 0)
+                        {
                             return fieldType.GetGenericArguments()[0];
+                        }
                     }
                 }
 
-                // Method 2: Fallback - analyze existing elements
+                // Method 2: Try to parse from property path and field reflection FIRST
+                try
+                {
+                    var targetObject = property.serializedObject.targetObject;
+                    var propertyPath = property.propertyPath;
+                    
+                    if (targetObject != null && !string.IsNullOrEmpty(propertyPath))
+                    {
+                        var fieldInfo = targetObject.GetType().GetField(propertyPath, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (fieldInfo != null)
+                        {
+                            var fieldType = fieldInfo.FieldType;
+                            
+                            if (fieldType.IsArray)
+                            {
+                                return fieldType.GetElementType();
+                            }
+                            
+                            if (fieldType.IsGenericType && fieldType.GetGenericArguments().Length > 0)
+                            {
+                                return fieldType.GetGenericArguments()[0];
+                            }
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // Silent fallback
+                }
+
+                // Method 3: Fallback - analyze existing elements (less reliable)
                 if (property.arraySize > 0)
                 {
                     var firstElement = property.GetArrayElementAtIndex(0);
                     if (firstElement.propertyType == SerializedPropertyType.ObjectReference)
                     {
-                        // Try to get type from existing object reference
-                        if (firstElement.objectReferenceValue != null)
-                            return firstElement.objectReferenceValue.GetType();
-                            
-                        // Check if it has a specific object type restriction
+                        // Check if it has a specific object type restriction from SerializedProperty
                         var objRefType = GetObjectReferenceType(firstElement);
                         if (objRefType != null)
                             return objRefType;
+                            
+                        // Last resort: get type from existing object (may be too specific!)
+                        if (firstElement.objectReferenceValue != null)
+                        {
+                            return firstElement.objectReferenceValue.GetType();
+                        }
                     }
                 }
 
-                // Method 3: Final fallback - return UnityEngine.Object for object references
+                // Method 4: Final fallback - return UnityEngine.Object for object references
                 if (property.arraySize == 0 || (property.arraySize > 0 && 
                     property.GetArrayElementAtIndex(0).propertyType == SerializedPropertyType.ObjectReference))
                 {

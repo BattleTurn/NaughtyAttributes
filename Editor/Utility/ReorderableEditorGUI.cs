@@ -11,7 +11,8 @@ namespace NaughtyAttributes.Editor
 {
     public static class ReorderableEditorGUI
     {
-        private static readonly Dictionary<ListKey, ReorderableList> _arrayLists = new Dictionary<ListKey, ReorderableList>();
+        private static readonly Dictionary<ListKey, ReorderableList> _arrayLists = new();
+        private static readonly Dictionary<ListKey, HashSet<int>> _selectedIndices = new();
 
         private const float INDENT_WIDTH = 15.0f;
 
@@ -46,6 +47,11 @@ namespace NaughtyAttributes.Editor
                     drawElementCallback = (Rect r, int index, bool isActive, bool isFocused) =>
                     {
                         if (!arrayProp.isExpanded) return;
+
+                        // Safe dictionary access to prevent KeyNotFoundException
+                        if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Contains(index))
+                            EditorGUI.DrawRect(r, new Color(0.3f, 0.5f, 1f, 0.3f));
+
                         SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
                         int indentLevel = EditorGUI.indentLevel;
                         float indent = indentLevel * INDENT_WIDTH;
@@ -83,6 +89,11 @@ namespace NaughtyAttributes.Editor
                 };
 
                 _arrayLists[key] = reorderableList;
+
+                if (!_selectedIndices.ContainsKey(key))
+                {
+                    _selectedIndices[key] = new HashSet<int>();
+                }
             }
 
             reorderableList = _arrayLists[key];
@@ -206,8 +217,8 @@ namespace NaughtyAttributes.Editor
 
             // Common ObjectReference patterns
             string[] objectPatterns = {
-                "transform", "gameobject", "component", "behaviour", "renderer", 
-                "collider", "rigidbody", "material", "texture", "sprite", 
+                "transform", "gameobject", "component", "behaviour", "renderer",
+                "collider", "rigidbody", "material", "texture", "sprite",
                 "audio", "prefab", "asset"
             };
 
@@ -245,9 +256,8 @@ namespace NaughtyAttributes.Editor
             DragAndDrop.AcceptDrag();
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Drag & Drop to List");
 
-            var existingObjects = GetExistingObjects(arrayProp);
-            AddCompatibleObjects(arrayProp, dragged, elementType, existingObjects);
-            
+            AddCompatibleObjects(arrayProp, dragged, elementType);
+
             arrayProp.serializedObject.ApplyModifiedProperties();
         }
 
@@ -280,6 +290,10 @@ namespace NaughtyAttributes.Editor
             if (elementType.IsAssignableFrom(obj.GetType()))
                 return true;
 
+            // Smart conversions
+            if (elementType == typeof(Sprite) && obj is Texture2D)
+                return true;
+
             // GameObject component extraction
             if (obj is GameObject go)
             {
@@ -302,30 +316,14 @@ namespace NaughtyAttributes.Editor
             return false;
         }
 
-        private static HashSet<Object> GetExistingObjects(SerializedProperty arrayProp)
-        {
-            var existing = new HashSet<Object>();
-            for (int i = 0; i < arrayProp.arraySize; i++)
-            {
-                var element = arrayProp.GetArrayElementAtIndex(i);
-                if (element.propertyType == SerializedPropertyType.ObjectReference && 
-                    element.objectReferenceValue != null)
-                {
-                    existing.Add(element.objectReferenceValue);
-                }
-            }
-            return existing;
-        }
-
-        private static void AddCompatibleObjects(SerializedProperty arrayProp, Object[] objects, Type elementType, HashSet<Object> existingObjects)
+        private static void AddCompatibleObjects(SerializedProperty arrayProp, Object[] objects, Type elementType)
         {
             foreach (var obj in objects)
             {
                 var targetObject = ExtractTargetObject(obj, elementType);
-                if (targetObject != null && !existingObjects.Contains(targetObject))
+                if (targetObject != null)
                 {
                     AddObjectToArray(arrayProp, targetObject);
-                    existingObjects.Add(targetObject);
                 }
             }
         }
@@ -337,6 +335,33 @@ namespace NaughtyAttributes.Editor
             // Direct assignment
             if (elementType == null || elementType.IsAssignableFrom(obj.GetType()))
                 return obj;
+
+            // SMART CONVERSIONS
+            // Texture2D → Sprite conversion
+            if (elementType == typeof(Sprite) && obj is Texture2D texture)
+            {
+                // Get all sprites that use this texture
+                string texturePath = AssetDatabase.GetAssetPath(texture);
+                if (!string.IsNullOrEmpty(texturePath))
+                {
+                    var allAssets = AssetDatabase.LoadAllAssetsAtPath(texturePath);
+                    Sprite foundSprite = null;
+
+                    foreach (var asset in allAssets)
+                    {
+                        if (asset is Sprite sprite)
+                        {
+                            foundSprite = sprite;
+                            break;
+                        }
+                    }
+
+                    if (foundSprite != null)
+                        return foundSprite;
+                }
+
+                return null;
+            }
 
             // GameObject component extraction
             if (obj is GameObject go)
@@ -361,6 +386,7 @@ namespace NaughtyAttributes.Editor
         {
             arrayProp.arraySize++;
             var newElement = arrayProp.GetArrayElementAtIndex(arrayProp.arraySize - 1);
+
             if (newElement.propertyType == SerializedPropertyType.ObjectReference)
             {
                 newElement.objectReferenceValue = targetObject;

@@ -29,6 +29,7 @@ namespace NaughtyAttributes.Test
         [Space]
         [Space]
         public List<MonoBehaviour> monoBehavioursList;
+        public List<Sprite> spritesList;
     }
 
     [System.Serializable]
