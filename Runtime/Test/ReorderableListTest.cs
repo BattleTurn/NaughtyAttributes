@@ -29,7 +29,9 @@ namespace NaughtyAttributes.Test
         [Space]
         [Space]
         public List<MonoBehaviour> monoBehavioursList;
+        [ShowAssetPreview]
         public List<Sprite> spritesList;
+        [Expandable]
         public List<ScriptableObject> scriptableObjectsList;
     }
 

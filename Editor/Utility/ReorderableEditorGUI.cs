@@ -21,6 +21,7 @@ namespace NaughtyAttributes.Editor
         private static readonly Dictionary<ListKey, ReorderableList> _arrayLists = new();
         private static readonly Dictionary<ListKey, HashSet<int>> _selectedIndices = new();
         private static readonly Dictionary<ListKey, Dictionary<int, Vector2>> _mouseDownPositions = new();
+        private static readonly Dictionary<ListKey, Dictionary<int, Color>> _elementBackgrounds = new();
         
         // Custom drag state
         private static ListKey? _dragKey = null;
@@ -67,6 +68,7 @@ namespace NaughtyAttributes.Editor
         {
             _arrayLists.Clear();
             _selectedIndices.Clear();
+            _elementBackgrounds.Clear();
         }
         
         #endregion
@@ -120,6 +122,12 @@ namespace NaughtyAttributes.Editor
                 {
                     DrawElement(arrayProp, key, r, index);
                 }
+            };
+
+            // Override background drawing to disable Unity's default selection highlight
+            reorderableList.drawElementBackgroundCallback = (Rect r, int index, bool isActive, bool isFocused) =>
+            {
+                // Do nothing - we handle our own background in DrawElement
             };
 
             reorderableList.elementHeightCallback = (int index) =>
@@ -261,13 +269,13 @@ namespace NaughtyAttributes.Editor
 
             Event currentEvent = Event.current;
             
-            // Draw alternating background colors for better visibility
+            // Draw alternating background colors + frame
             if (currentEvent.type == EventType.Repaint)
             {
                 Color backgroundColor;
                 if (index % 2 == 0)
                 {
-                    // Even rows - slightly darker
+                    // Even rows - lighter
                     backgroundColor = EditorGUIUtility.isProSkin 
                         ? new Color(0.25f, 0.25f, 0.25f, 1f) 
                         : new Color(0.92f, 0.92f, 0.92f, 1f);
@@ -276,11 +284,40 @@ namespace NaughtyAttributes.Editor
                 {
                     // Odd rows - darker
                     backgroundColor = EditorGUIUtility.isProSkin 
-                        ? new Color(0.22f, 0.22f, 0.22f, 1f) 
+                        ? new Color(0.20f, 0.20f, 0.20f, 1f) 
                         : new Color(0.88f, 0.88f, 0.88f, 1f);
                 }
                 
-                EditorGUI.DrawRect(r, backgroundColor);
+                // First draw solid background with proper margins
+                Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
+                EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
+                
+                // Then draw frame on top using GUI.Box with selection color
+                Color originalBackgroundColor = GUI.backgroundColor;
+                
+                // Check if this element is selected and change GUI.backgroundColor
+                if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Contains(index))
+                {
+                    bool isSmartSelection = IsSmartSelection(key, index);
+                    
+                    if (isSmartSelection)
+                    {
+                        // Smart selection - darker greenish color for the box
+                        GUI.backgroundColor = new Color(0.2f, 0.9f, 0.4f, 1f);
+                    }
+                    else
+                    {
+                        // Manual selection - darker blue color for the box
+                        GUI.backgroundColor = new Color(0.4f, 0.6f, 1f, 1f);
+                    }
+                }
+                else
+                {
+                    GUI.backgroundColor = Color.white; // Normal box color
+                }
+                
+                GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
+                GUI.backgroundColor = originalBackgroundColor;
             }
             
             // Draw delete button (X) on the right side
@@ -347,54 +384,36 @@ namespace NaughtyAttributes.Editor
             // Custom drag & drop handling
             HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
 
-            // Draw selection background with different intensity for better visibility
-            if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Contains(index))
-            {
-                Color selectionColor;
-                
-                // Check if this is a smart selection (adjacent elements) vs manual selection
-                bool isSmartSelection = IsSmartSelection(key, index);
-                
-                if (isSmartSelection)
-                {
-                    // Smart selection - greenish color for grouped elements
-                    selectionColor = new Color(0.2f, 0.8f, 0.4f, 0.4f);
-                }
-                else
-                {
-                    // Manual selection - blue color
-                    selectionColor = new Color(0.3f, 0.5f, 1f, 0.4f);
-                }
-                
-                if (_selectedIndices[key].Count == 1)
-                    selectionColor.a = 0.3f; // Single selection - lighter
-                else
-                    selectionColor.a = 0.5f; // Multi selection - more prominent
-                    
-                EditorGUI.DrawRect(r, selectionColor);
-                
-                // Add a small indicator for smart selection
-                if (isSmartSelection && _selectedIndices[key].Count > 1)
-                {
-                    var indicatorRect = new Rect(r.x + r.width - 15, r.y + 2, 12, 12);
-                    EditorGUI.DrawRect(indicatorRect, new Color(0.1f, 0.6f, 0.2f, 0.8f));
-                    var style = new GUIStyle(EditorStyles.miniLabel);
-                    style.normal.textColor = Color.white;
-                    style.fontSize = 8;
-                    style.alignment = TextAnchor.MiddleCenter;
-                    GUI.Label(indicatorRect, "●", style);
-                }
-            }
-
             SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
             
-            r.y += 1.0f;
-            r.x += 10.0f + indent; // Back to normal spacing
-            r.width -= 10.0f + indent;
+            // Calculate proper position within fullBackgroundRect
+            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
+            
+            // Draw decorative reorder icon
+            Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
+            if (currentEvent.type == EventType.Repaint)
+            {
+                Color reorderIconColor = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.4f, 0.4f, 0.4f);
+                
+                // Draw three horizontal lines to simulate reorder handle
+                for (int i = 0; i < 3; i++)
+                {
+                    Rect lineRect = new Rect(reorderIconRect.x + 1, reorderIconRect.y + 2 + i * 3, 10, 1);
+                    EditorGUI.DrawRect(lineRect, reorderIconColor);
+                }
+            }
+            
+            // Center the PropertyField within the background rect with proper padding (accounting for reorder icon)
+            Rect propertyRect = new Rect(
+                elementRect.x + 22.0f + indent, // Extra space for reorder icon
+                elementRect.y + 1.0f, 
+                elementRect.width - 44.0f - indent, // Account for both icon and delete button space
+                EditorGUIUtility.singleLineHeight
+            );
 
-            EditorGUI.PropertyField(new Rect(r.x, r.y, r.width, EditorGUIUtility.singleLineHeight), element, true);
+            EditorGUI.PropertyField(propertyRect, element, true);
         }
 
         private static void HandleCustomDragAndDrop(ListKey key, int index, Rect r, Event currentEvent, SerializedProperty arrayProp)
@@ -652,6 +671,7 @@ namespace NaughtyAttributes.Editor
             
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
+            // Reduce footer height by 1px to tighten the container
             Rect indentedRect = new Rect(fr.x + indent, fr.y, fr.width - indent, fr.height);
             
             ReorderableList.defaultBehaviours.DrawFooter(indentedRect, reorderableList);
@@ -664,6 +684,7 @@ namespace NaughtyAttributes.Editor
             _arrayLists.Remove(key);
             _selectedIndices.Remove(key);
             _mouseDownPositions.Remove(key);
+            _elementBackgrounds.Remove(key);
             InternalEditorUtility.RepaintAllViews();
         }
 
