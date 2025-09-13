@@ -287,24 +287,52 @@ namespace NaughtyAttributes.Editor
             var so = arrayProp.serializedObject;
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
 
-            // Build header label with selection info and helpful tooltip
-            string label = $"{arrayProp.displayName}: {arrayProp.arraySize}";
-            string tooltip = "💡 Drag elements to auto-select similar adjacent items\n• Green highlight = Smart selection\n• Blue highlight = Manual selection\n• Ctrl+Click = Manual multi-select\n• Right-click = Context menu";
+            // Build header content
+            var headerContent = BuildHeaderContent(arrayProp, key);
+            
+            // Calculate header rect
+            Rect headerRect = CalculateHeaderRect(r, arrayProp);
 
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Count > 0)
+            // Handle context menu
+            if (HandleHeaderContextMenu(headerRect, arrayProp)) return;
+
+            // Draw foldout and handle expansion changes
+            DrawFoldoutAndHandleExpansion(headerRect, arrayProp, headerContent);
+        }
+
+        private static GUIContent BuildHeaderContent(SerializedProperty arrayProp, ListKey key)
+        {
+            // Build header label with selection info
+            string label = $"{arrayProp.displayName}: {arrayProp.arraySize}";
+            string tooltip = BuildHeaderTooltip();
+
+            // Add selection info if any elements are selected
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && 
+                ReorderableEditorGUIController.SelectedIndices[key].Count > 0)
             {
-                label += $" ({ReorderableEditorGUIController.SelectedIndices[key].Count} selected)";
-                tooltip = $"Selected: {ReorderableEditorGUIController.SelectedIndices[key].Count} items\n" + tooltip;
+                int selectedCount = ReorderableEditorGUIController.SelectedIndices[key].Count;
+                label += $" ({selectedCount} selected)";
+                tooltip = $"Selected: {selectedCount} items\n" + tooltip;
             }
 
-            var headerContent = new GUIContent(label, tooltip);
+            return new GUIContent(label, tooltip);
+        }
 
+        private static string BuildHeaderTooltip()
+        {
+            return "💡 Drag elements to auto-select similar adjacent items\n" +
+                   "• Green highlight = Smart selection\n" +
+                   "• Blue highlight = Manual selection\n" +
+                   "• Ctrl+Click = Manual multi-select\n" +
+                   "• Right-click = Context menu";
+        }
+
+        private static Rect CalculateHeaderRect(Rect r, SerializedProperty arrayProp)
+        {
             Rect headerRect = new Rect(r.x, r.y, r.width, r.height);
             headerRect.x += INDENT_WIDTH;
 
-            GUI.Label(headerRect, GUIContent.none);
-            bool lastExpanded = arrayProp.isExpanded;
-
+            // Adjust for nested properties
             if (arrayProp.propertyPath.Contains('.'))
             {
                 string[] pathParts = arrayProp.propertyPath.Split('.');
@@ -313,16 +341,31 @@ namespace NaughtyAttributes.Editor
                 headerRect.width += indent;
             }
 
-            // Handle context menu on right click
+            return headerRect;
+        }
+
+        private static bool HandleHeaderContextMenu(Rect headerRect, SerializedProperty arrayProp)
+        {
             if (headerRect.BeenRightClickOn())
             {
                 ShowArrayContextMenu(arrayProp);
-                return;
+                return true; // Context menu was shown, stop processing
             }
+            return false;
+        }
 
+        private static void DrawFoldoutAndHandleExpansion(Rect headerRect, SerializedProperty arrayProp, GUIContent headerContent)
+        {
+            // Draw invisible label for proper spacing
+            GUI.Label(headerRect, GUIContent.none);
+            
+            // Store previous expansion state
+            bool lastExpanded = arrayProp.isExpanded;
 
+            // Draw the foldout
             arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, headerContent, true);
 
+            // Handle expansion state changes
             if (lastExpanded != arrayProp.isExpanded)
             {
                 InvalidateListCache(arrayProp);
@@ -335,128 +378,160 @@ namespace NaughtyAttributes.Editor
 
             Event currentEvent = Event.current;
 
-            // Draw alternating background colors + frame
-            if (currentEvent.type == EventType.Repaint)
+            // Calculate rects first
+            Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
+            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
+
+            // Draw visual elements
+            DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
+            
+            // Handle delete button
+            if (DrawDeleteButton(r, arrayProp, index)) return;
+
+            // Adjust drawing area
+            r.width -= 25;
+
+            // Handle interactions
+            HandleElementInteractions(key, index, r, currentEvent, arrayProp);
+
+            // Draw reorder icon and property field
+            DrawReorderIcon(elementRect, currentEvent);
+            DrawPropertyField(elementRect, arrayProp, index);
+        }
+
+        private static void DrawElementBackground(Rect fullBackgroundRect, ListKey key, int index, Event currentEvent)
+        {
+            if (currentEvent.type != EventType.Repaint) return;
+
+            // Draw alternating background
+            Color backgroundColor = GetAlternatingBackgroundColor(index);
+            EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
+
+            // Draw selection frame
+            DrawSelectionFrame(fullBackgroundRect, key, index);
+        }
+
+        private static Color GetAlternatingBackgroundColor(int index)
+        {
+            if (index % 2 == 0)
             {
-                Color backgroundColor;
-                if (index % 2 == 0)
-                {
-                    // Even rows - lighter
-                    backgroundColor = EditorGUIUtility.isProSkin
-                        ? new Color(0.25f, 0.25f, 0.25f, 1f)
-                        : new Color(0.92f, 0.92f, 0.92f, 1f);
-                }
-                else
-                {
-                    // Odd rows - darker
-                    backgroundColor = EditorGUIUtility.isProSkin
-                        ? new Color(0.20f, 0.20f, 0.20f, 1f)
-                        : new Color(0.88f, 0.88f, 0.88f, 1f);
-                }
+                // Even rows - lighter
+                return EditorGUIUtility.isProSkin
+                    ? new Color(0.25f, 0.25f, 0.25f, 1f)
+                    : new Color(0.92f, 0.92f, 0.92f, 1f);
+            }
+            else
+            {
+                // Odd rows - darker
+                return EditorGUIUtility.isProSkin
+                    ? new Color(0.20f, 0.20f, 0.20f, 1f)
+                    : new Color(0.88f, 0.88f, 0.88f, 1f);
+            }
+        }
 
-                // First draw solid background with proper margins
-                Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
-                EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
+        private static void DrawSelectionFrame(Rect fullBackgroundRect, ListKey key, int index)
+        {
+            Color originalBackgroundColor = GUI.backgroundColor;
 
-                // Then draw frame on top using GUI.Box with selection color
-                Color originalBackgroundColor = GUI.backgroundColor;
-
-                // Check if this element is selected and change GUI.backgroundColor
-                if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
-                {
-                    bool isSmartSelection = IsSmartSelection(key, index);
-
-                    if (isSmartSelection)
-                    {
-                        // Smart selection - darker greenish color for the box
-                        GUI.backgroundColor = new Color(0.2f, 0.9f, 0.4f, 1f);
-                    }
-                    else
-                    {
-                        // Manual selection - darker blue color for the box
-                        GUI.backgroundColor = new Color(0.4f, 0.6f, 1f, 1f);
-                    }
-                }
-                else
-                {
-                    GUI.backgroundColor = Color.white; // Normal box color
-                }
-
-                GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
-                GUI.backgroundColor = originalBackgroundColor;
+            // Check if this element is selected
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && 
+                ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
+            {
+                bool isSmartSelection = IsSmartSelection(key, index);
+                GUI.backgroundColor = isSmartSelection
+                    ? new Color(0.2f, 0.9f, 0.4f, 1f)  // Smart selection - green
+                    : new Color(0.4f, 0.6f, 1f, 1f);   // Manual selection - blue
+            }
+            else
+            {
+                GUI.backgroundColor = Color.white; // Normal
             }
 
-            // Draw delete button (X) on the right side
-            Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
+            GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
+            GUI.backgroundColor = originalBackgroundColor;
+        }
 
-            // Style for the X button - no background, just text like reorder icon
-            GUIStyle deleteButtonStyle = new GUIStyle()
+        private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
+        {
+            Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
+            GUIStyle deleteButtonStyle = CreateDeleteButtonStyle();
+
+            if (GUI.Button(deleteButtonRect, "×", deleteButtonStyle))
+            {
+                arrayProp.DeleteArrayElementAtIndex(index);
+                return true; // Element was deleted
+            }
+            return false;
+        }
+
+        private static GUIStyle CreateDeleteButtonStyle()
+        {
+            var style = new GUIStyle()
             {
                 fontSize = 12,
-                fontStyle = FontStyle.Normal, // Normal weight for thin appearance
+                fontStyle = FontStyle.Normal,
                 alignment = TextAnchor.MiddleCenter,
                 padding = new RectOffset(0, 0, 0, 0),
                 margin = new RectOffset(0, 0, 0, 0),
                 border = new RectOffset(0, 0, 0, 0)
             };
 
-            // Set colors - gray like reorder icon, white on hover
-            Color iconColor = EditorGUIUtility.isProSkin ? new Color(0.7f, 0.7f, 0.7f) : new Color(0.4f, 0.4f, 0.4f);
-            deleteButtonStyle.normal.textColor = iconColor;
-            deleteButtonStyle.hover.textColor = Color.white;
-            deleteButtonStyle.normal.background = null; // No background
-            deleteButtonStyle.hover.background = null;   // No background on hover
+            Color iconColor = EditorGUIUtility.isProSkin 
+                ? new Color(0.7f, 0.7f, 0.7f) 
+                : new Color(0.4f, 0.4f, 0.4f);
+            
+            style.normal.textColor = iconColor;
+            style.hover.textColor = Color.white;
+            style.normal.background = null;
+            style.hover.background = null;
 
-            // Draw the delete button
-            if (GUI.Button(deleteButtonRect, "×", deleteButtonStyle))
-            {
-                // Delete this element
-                arrayProp.DeleteArrayElementAtIndex(index);
-                return;
-            }
+            return style;
+        }
 
-            // Adjust element drawing area to not overlap with delete button
-            r.width -= 25;
-
-            // Block mouse events on potential reorder handle area (without visual overlay)
+        private static void HandleElementInteractions(ListKey key, int index, Rect r, Event currentEvent, SerializedProperty arrayProp)
+        {
+            // Block mouse events on reorder handle area
             Rect handleBlockRect = new Rect(r.x - 20, r.y, 15, r.height);
             handleBlockRect.IsBlockClick(currentEvent);
 
-            // Handle keyboard shortcuts for selected elements
+            // Handle keyboard shortcuts
             if (ReorderableEditorGUIController.CheckAnyKeyboardShortcutPressed(arrayLists, key, currentEvent))
             {
                 return;
             }
 
-            // Custom drag & drop handling
+            // Handle custom drag & drop
             ReorderableEditorGUIController.HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
+        }
 
+        private static void DrawReorderIcon(Rect elementRect, Event currentEvent)
+        {
+            if (currentEvent.type != EventType.Repaint) return;
+
+            Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
+            Color reorderIconColor = EditorGUIUtility.isProSkin 
+                ? new Color(0.6f, 0.6f, 0.6f) 
+                : new Color(0.4f, 0.4f, 0.4f);
+
+            // Draw three horizontal lines to simulate reorder handle
+            for (int i = 0; i < 3; i++)
+            {
+                Rect lineRect = new Rect(reorderIconRect.x + 1, reorderIconRect.y + 2 + i * 3, 10, 1);
+                EditorGUI.DrawRect(lineRect, reorderIconColor);
+            }
+        }
+
+        private static void DrawPropertyField(Rect elementRect, SerializedProperty arrayProp, int index)
+        {
             SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
 
-            // Calculate proper position within fullBackgroundRect
-            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
-
-            // Draw decorative reorder icon
-            Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
-            if (currentEvent.type == EventType.Repaint)
-            {
-                Color reorderIconColor = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.4f, 0.4f, 0.4f);
-
-                // Draw three horizontal lines to simulate reorder handle
-                for (int i = 0; i < 3; i++)
-                {
-                    Rect lineRect = new Rect(reorderIconRect.x + 1, reorderIconRect.y + 2 + i * 3, 10, 1);
-                    EditorGUI.DrawRect(lineRect, reorderIconColor);
-                }
-            }
-
-            // Center the PropertyField within the background rect with proper padding (accounting for reorder icon)
+            // Calculate property field rect with proper padding
             Rect propertyRect = new Rect(
-                elementRect.x + 22.0f + indent, // Extra space for reorder icon
+                elementRect.x + 22.0f + indent, // Space for reorder icon
                 elementRect.y + 1.0f,
-                elementRect.width - 44.0f - indent, // Account for both icon and delete button space
+                elementRect.width - 44.0f - indent, // Account for both icon and delete button
                 EditorGUIUtility.singleLineHeight
             );
 
