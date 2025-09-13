@@ -453,7 +453,7 @@ namespace NaughtyAttributes.Editor
 
         private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
         {
-            Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
+            Rect deleteButtonRect = new Rect(r.xMax - 10, r.y - 3, 10, r.height);
             GUIStyle deleteButtonStyle = CreateDeleteButtonStyle();
 
             if (GUI.Button(deleteButtonRect, "×", deleteButtonStyle))
@@ -492,7 +492,7 @@ namespace NaughtyAttributes.Editor
         {
             // Block mouse events on reorder handle area
             Rect handleBlockRect = new Rect(r.x - 20, r.y, 15, r.height);
-            handleBlockRect.IsBlockClick(currentEvent);
+            if (handleBlockRect.IsBlockClick(currentEvent)) return;
 
             // Handle keyboard shortcuts
             if (ReorderableEditorGUIController.CheckAnyKeyboardShortcutPressed(arrayLists, key, currentEvent))
