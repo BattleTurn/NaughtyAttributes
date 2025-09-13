@@ -214,71 +214,142 @@ namespace NaughtyAttributes.Editor
 
         private static void HandleElementSelection(ListKey key, int index, Event currentEvent)
         {
+            // Clear selections from other properties when starting new selection
+            ClearOtherPropertySelections(key, currentEvent);
+            
+            var selectedSet = EnsureSelectionExists(key);
+
+            if (currentEvent.button == 0) // Left click
+            {
+                HandleLeftClickSelection(selectedSet, index, currentEvent);
+            }
+            else if (currentEvent.button == 1) // Right click
+            {
+                HandleRightClickSelection(key, selectedSet, index);
+            }
+        }
+
+        private static void ClearOtherPropertySelections(ListKey currentKey, Event currentEvent)
+        {
+            // Only clear other selections when starting a new selection operation
+            // Don't clear when doing Ctrl+Click or Shift+Click on the same property
+            bool isModifierClick = currentEvent.control || currentEvent.command || currentEvent.shift;
+            
+            if (!isModifierClick)
+            {
+                // Normal click: clear all other property selections
+                var keysToRemove = _selectedIndices.Keys.Where(k => !k.Equals(currentKey)).ToList();
+                foreach (var key in keysToRemove)
+                {
+                    _selectedIndices[key].Clear();
+                }
+            }
+            else
+            {
+                // Modifier click: clear other properties but keep current if it has selection
+                var keysToRemove = _selectedIndices.Keys.Where(k => !k.Equals(currentKey)).ToList();
+                foreach (var key in keysToRemove)
+                {
+                    _selectedIndices[key].Clear();
+                }
+            }
+        }
+
+        private static HashSet<int> EnsureSelectionExists(ListKey key)
+        {
             if (!_selectedIndices.ContainsKey(key))
             {
                 _selectedIndices[key] = new HashSet<int>();
             }
+            return _selectedIndices[key];
+        }
 
-            var selectedSet = _selectedIndices[key];
-
-            if (currentEvent.button == 0) // Left click
+        private static void HandleLeftClickSelection(HashSet<int> selectedSet, int index, Event currentEvent)
+        {
+            if (currentEvent.control || currentEvent.command) // Ctrl/Cmd + Click
             {
-                if (currentEvent.control || currentEvent.command) // Ctrl/Cmd + Click
-                {
-                    // Toggle selection
-                    if (selectedSet.Contains(index))
-                        selectedSet.Remove(index);
-                    else
-                        selectedSet.Add(index);
-                }
-                else if (currentEvent.shift) // Shift + Click
-                {
-                    // Range selection
-                    if (selectedSet.Count > 0)
-                    {
-                        int lastSelected = selectedSet.Max();
-                        int start = Mathf.Min(lastSelected, index);
-                        int end = Mathf.Max(lastSelected, index);
-                        
-                        for (int i = start; i <= end; i++)
-                        {
-                            selectedSet.Add(i);
-                        }
-                    }
-                    else
-                    {
-                        selectedSet.Add(index);
-                    }
-                }
-                else // Normal click
-                {
-                    // Simple single selection (smart selection will be handled in mouse up)
-                    selectedSet.Clear();
-                    selectedSet.Add(index);
-                }
+                HandleToggleSelection(selectedSet, index);
             }
-            else if (currentEvent.button == 1) // Right click
+            else if (currentEvent.shift) // Shift + Click
             {
-                // If right-clicking on unselected item, select it first
-                if (!selectedSet.Contains(index))
-                {
-                    selectedSet.Clear();
-                    selectedSet.Add(index);
-                }
+                HandleRangeSelection(selectedSet, index);
+            }
+            else // Normal click
+            {
+                HandleSingleSelection(selectedSet, index);
+            }
+        }
+
+        private static void HandleToggleSelection(HashSet<int> selectedSet, int index)
+        {
+            // Toggle selection
+            if (selectedSet.Contains(index))
+                selectedSet.Remove(index);
+            else
+                selectedSet.Add(index);
+        }
+
+        private static void HandleRangeSelection(HashSet<int> selectedSet, int index)
+        {
+            // Range selection
+            if (selectedSet.Count > 0)
+            {
+                int lastSelected = selectedSet.Max();
+                int start = Mathf.Min(lastSelected, index);
+                int end = Mathf.Max(lastSelected, index);
                 
-                // Show context menu for selected elements
-                ReorderableEditorGUI.ShowElementContextMenu(key, selectedSet);
+                for (int i = start; i <= end; i++)
+                {
+                    selectedSet.Add(i);
+                }
             }
+            else
+            {
+                selectedSet.Add(index);
+            }
+        }
+
+        private static void HandleSingleSelection(HashSet<int> selectedSet, int index)
+        {
+            // Simple single selection (smart selection will be handled in mouse up)
+            selectedSet.Clear();
+            selectedSet.Add(index);
+        }
+
+        private static void HandleRightClickSelection(ListKey key, HashSet<int> selectedSet, int index)
+        {
+            // If right-clicking on unselected item, select it first
+            if (!selectedSet.Contains(index))
+            {
+                selectedSet.Clear();
+                selectedSet.Add(index);
+            }
+            
+            // Show context menu for selected elements
+            ReorderableEditorGUI.ShowElementContextMenu(key, selectedSet);
         }
 
         private static void PerformCustomReorder(SerializedProperty arrayProp, HashSet<int> dragIndices, int insertIndex)
         {
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Reorder Multiple Elements");
             
-            // Convert to sorted list for consistent ordering
+            // Get sorted indices and backup data
             var sortedIndices = dragIndices.OrderBy(i => i).ToList();
+            var draggedData = BackupDraggedElements(arrayProp, sortedIndices);
             
-            // Store data of dragged elements
+            // Remove elements and calculate final insert position
+            RemoveDraggedElements(arrayProp, sortedIndices);
+            int finalInsertIndex = CalculateFinalInsertIndex(insertIndex, sortedIndices);
+            
+            // Insert elements at new position and update selection
+            InsertElementsAtNewPosition(arrayProp, draggedData, finalInsertIndex);
+            UpdateSelectionAfterReorder(arrayProp, draggedData.Count, finalInsertIndex);
+            
+            arrayProp.serializedObject.ApplyModifiedProperties();
+        }
+
+        private static List<object> BackupDraggedElements(SerializedProperty arrayProp, List<int> sortedIndices)
+        {
             var draggedData = new List<object>();
             foreach (int idx in sortedIndices)
             {
@@ -288,8 +359,12 @@ namespace NaughtyAttributes.Editor
                     draggedData.Add(element.GetElementData());
                 }
             }
-            
-            // Remove dragged elements (in reverse order to maintain indices)
+            return draggedData;
+        }
+
+        private static void RemoveDraggedElements(SerializedProperty arrayProp, List<int> sortedIndices)
+        {
+            // Remove in reverse order to maintain indices
             var reversedIndices = sortedIndices.OrderByDescending(i => i).ToList();
             foreach (int idx in reversedIndices)
             {
@@ -298,16 +373,21 @@ namespace NaughtyAttributes.Editor
                     arrayProp.DeleteArrayElementAtIndex(idx);
                 }
             }
-            
-            // Adjust insert index if needed
+        }
+
+        private static int CalculateFinalInsertIndex(int insertIndex, List<int> sortedIndices)
+        {
             int finalInsertIndex = insertIndex;
             foreach (int removedIndex in sortedIndices)
             {
                 if (removedIndex < insertIndex)
                     finalInsertIndex--;
             }
-            
-            // Insert elements at new position
+            return finalInsertIndex;
+        }
+
+        private static void InsertElementsAtNewPosition(SerializedProperty arrayProp, List<object> draggedData, int finalInsertIndex)
+        {
             for (int i = 0; i < draggedData.Count; i++)
             {
                 int insertAt = Mathf.Max(0, finalInsertIndex + i);
@@ -318,18 +398,18 @@ namespace NaughtyAttributes.Editor
                     newElement.SetElementData(draggedData[i]);
                 }
             }
-            
-            // Update selection to new positions
+        }
+
+        private static void UpdateSelectionAfterReorder(SerializedProperty arrayProp, int elementCount, int finalInsertIndex)
+        {
             var newSelection = new HashSet<int>();
-            for (int i = 0; i < draggedData.Count; i++)
+            for (int i = 0; i < elementCount; i++)
             {
                 newSelection.Add(finalInsertIndex + i);
             }
             
             var key = new ListKey(arrayProp.serializedObject.targetObject.GetInstanceID(), arrayProp.propertyPath);
             _selectedIndices[key] = newSelection;
-            
-            arrayProp.serializedObject.ApplyModifiedProperties();
         }
 
         private static HashSet<int> GetOrCreateSmartSelection(ListKey key, int draggedIndex, int arraySize)
