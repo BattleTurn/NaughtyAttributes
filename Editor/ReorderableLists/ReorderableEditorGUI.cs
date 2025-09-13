@@ -18,33 +18,32 @@ namespace NaughtyAttributes.Editor
     {
         #region Fields & Constants
         
-        private static readonly Dictionary<ListKey, ReorderableList> _arrayLists = new();
-        private static readonly Dictionary<ListKey, HashSet<int>> _selectedIndices = new();
-        private static readonly Dictionary<ListKey, Dictionary<int, Vector2>> _mouseDownPositions = new();
+        internal static readonly Dictionary<ListKey, ReorderableList> arrayLists = new();
+
         private static readonly Dictionary<ListKey, Dictionary<int, Color>> _elementBackgrounds = new();
         
-        // Custom drag state
-        private static ListKey? _dragKey = null;
-        private static HashSet<int> _dragIndices = null;
-        private static bool _isDragging = false;
-        private static int _dragInsertIndex = -1;
-        
         private const float INDENT_WIDTH = 15.0f;
-        
-        #endregion
 
-        #region Data Structures
-        
-        private struct ListKey
-        {
-            public int id;
-            public string path;
-            public ListKey(int id, string path) { this.id = id; this.path = path; }
-        }
-        
         #endregion
 
         #region Public API
+        internal static void ShowElementContextMenu(ListKey key, HashSet<int> selectedIndices)
+        {
+            GenericMenu menu = new GenericMenu();
+
+            if (selectedIndices.Count == 1)
+            {
+                menu.AddItem(new GUIContent($"Delete Element"), false, () => arrayLists.DeleteSelectedElements(key, selectedIndices));
+                menu.AddItem(new GUIContent($"Duplicate Element"), false, () => arrayLists.DuplicateSelectedElements(key, selectedIndices));
+            }
+            else if (selectedIndices.Count > 1)
+            {
+                menu.AddItem(new GUIContent($"Delete {selectedIndices.Count} Elements"), false, () => arrayLists.DeleteSelectedElements(key, selectedIndices));
+                menu.AddItem(new GUIContent($"Duplicate {selectedIndices.Count} Elements"), false, () => arrayLists.DuplicateSelectedElements(key, selectedIndices));
+            }
+
+            menu.ShowAsContext();
+        }
         
         /// <summary>
         /// Creates and renders a ReorderableList with enhanced drag & drop capabilities
@@ -53,11 +52,11 @@ namespace NaughtyAttributes.Editor
         {
             var reorderableList = GetOrCreateReorderableList(arrayProp);
             var listRect = CalculateListRect(rect, arrayProp, reorderableList);
-            
+
             // Handle drag & drop BEFORE rendering to take event priority
             var dropRect = CalculateExpandedDropRect(listRect, arrayProp);
             HandleDragAndDrop(arrayProp, dropRect);
-            
+
             reorderableList.DoList(listRect);
         }
 
@@ -66,32 +65,99 @@ namespace NaughtyAttributes.Editor
         /// </summary>
         public static void ClearCache()
         {
-            _arrayLists.Clear();
-            _selectedIndices.Clear();
+            arrayLists.Clear();
+            ReorderableEditorGUIController.SelectedIndices.Clear();
             _elementBackgrounds.Clear();
         }
         
+        public static void ShowArrayContextMenu(SerializedProperty arrayProp)
+        {
+            var so = arrayProp.serializedObject;
+            var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
+            bool hasSelection = ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Count > 0;
+            
+            GenericMenu menu = new GenericMenu();
+
+            // Selection-based operations
+            if (hasSelection)
+            {
+                int selectedCount = ReorderableEditorGUIController.SelectedIndices[key].Count;
+                menu.AddItem(new GUIContent($"Delete Selected ({selectedCount})"), false, () => arrayLists.DeleteSelectedElements(key, ReorderableEditorGUIController.SelectedIndices[key]));
+                menu.AddItem(new GUIContent($"Duplicate Selected ({selectedCount})"), false, () => arrayLists.DuplicateSelectedElements(key, ReorderableEditorGUIController.SelectedIndices[key]));
+                menu.AddSeparator("");
+            }
+
+            // Clear Array
+            menu.AddItem(new GUIContent("Clear Array"), false, () => ClearArray(arrayProp));
+
+            menu.AddSeparator("");
+
+            // Remove Duplicates (only for ObjectReference arrays)
+            if (IsObjectReferenceArray(arrayProp) && arrayProp.arraySize > 1)
+            {
+                menu.AddItem(new GUIContent("Remove Duplicates"), false, () => RemoveDuplicates(arrayProp));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Remove Duplicates"));
+            }
+
+            // Remove Null References
+            if (IsObjectReferenceArray(arrayProp) && HasNullReferences(arrayProp))
+            {
+                menu.AddItem(new GUIContent("Remove Null References"), false, () => RemoveNullReferences(arrayProp));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Remove Null References"));
+            }
+
+            menu.AddSeparator("");
+
+            // Sort Array (only for compatible types)
+            if (CanSortArray(arrayProp) && arrayProp.arraySize > 1)
+            {
+                var sortMenuText = GetSortMenuText(arrayProp);
+                menu.AddItem(new GUIContent(sortMenuText), false, () => SortArray(arrayProp));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Sort"));
+            }
+
+            // Reverse Array
+            if (arrayProp.arraySize > 1)
+            {
+                menu.AddItem(new GUIContent("Reverse"), false, () => ReverseArray(arrayProp));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Reverse"));
+            }
+
+            menu.ShowAsContext();
+        }
         #endregion
 
         #region ReorderableList Creation & Management
-        
+
         private static ReorderableList GetOrCreateReorderableList(SerializedProperty arrayProp)
         {
             var so = arrayProp.serializedObject;
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
-            
-            if (!_arrayLists.ContainsKey(key))
+
+            if (!arrayLists.ContainsKey(key))
             {
                 var reorderableList = CreateNewReorderableList(arrayProp, key);
-                _arrayLists[key] = reorderableList;
-                
-                if (!_selectedIndices.ContainsKey(key))
+                arrayLists[key] = reorderableList;
+
+                if (!ReorderableEditorGUIController.SelectedIndices.ContainsKey(key))
                 {
-                    _selectedIndices[key] = new HashSet<int>();
+                    ReorderableEditorGUIController.SelectedIndices[key] = new HashSet<int>();
                 }
             }
 
-            var list = _arrayLists[key];
+            var list = arrayLists[key];
             list.draggable = arrayProp.isExpanded;
             return list;
         }
@@ -220,15 +286,15 @@ namespace NaughtyAttributes.Editor
         {
             var so = arrayProp.serializedObject;
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
-            
+
             // Build header label with selection info and helpful tooltip
             string label = $"{arrayProp.displayName}: {arrayProp.arraySize}";
             string tooltip = "💡 Drag elements to auto-select similar adjacent items\n• Green highlight = Smart selection\n• Blue highlight = Manual selection\n• Ctrl+Click = Manual multi-select\n• Right-click = Context menu";
-            
-            if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Count > 0)
+
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Count > 0)
             {
-                label += $" ({_selectedIndices[key].Count} selected)";
-                tooltip = $"Selected: {_selectedIndices[key].Count} items\n" + tooltip;
+                label += $" ({ReorderableEditorGUIController.SelectedIndices[key].Count} selected)";
+                tooltip = $"Selected: {ReorderableEditorGUIController.SelectedIndices[key].Count} items\n" + tooltip;
             }
 
             var headerContent = new GUIContent(label, tooltip);
@@ -238,7 +304,7 @@ namespace NaughtyAttributes.Editor
 
             GUI.Label(headerRect, GUIContent.none);
             bool lastExpanded = arrayProp.isExpanded;
-            
+
             if (arrayProp.propertyPath.Contains('.'))
             {
                 string[] pathParts = arrayProp.propertyPath.Split('.');
@@ -248,12 +314,12 @@ namespace NaughtyAttributes.Editor
             }
 
             // Handle context menu on right click
-            Event currentEvent = Event.current;
-            if (currentEvent.type == EventType.ContextClick && headerRect.Contains(currentEvent.mousePosition))
+            if (headerRect.BeenRightClickOn())
             {
                 ShowArrayContextMenu(arrayProp);
-                currentEvent.Use();
+                return;
             }
+
 
             arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, headerContent, true);
 
@@ -268,7 +334,7 @@ namespace NaughtyAttributes.Editor
             if (!arrayProp.isExpanded) return;
 
             Event currentEvent = Event.current;
-            
+
             // Draw alternating background colors + frame
             if (currentEvent.type == EventType.Repaint)
             {
@@ -276,30 +342,30 @@ namespace NaughtyAttributes.Editor
                 if (index % 2 == 0)
                 {
                     // Even rows - lighter
-                    backgroundColor = EditorGUIUtility.isProSkin 
-                        ? new Color(0.25f, 0.25f, 0.25f, 1f) 
+                    backgroundColor = EditorGUIUtility.isProSkin
+                        ? new Color(0.25f, 0.25f, 0.25f, 1f)
                         : new Color(0.92f, 0.92f, 0.92f, 1f);
                 }
                 else
                 {
                     // Odd rows - darker
-                    backgroundColor = EditorGUIUtility.isProSkin 
-                        ? new Color(0.20f, 0.20f, 0.20f, 1f) 
+                    backgroundColor = EditorGUIUtility.isProSkin
+                        ? new Color(0.20f, 0.20f, 0.20f, 1f)
                         : new Color(0.88f, 0.88f, 0.88f, 1f);
                 }
-                
+
                 // First draw solid background with proper margins
                 Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
                 EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
-                
+
                 // Then draw frame on top using GUI.Box with selection color
                 Color originalBackgroundColor = GUI.backgroundColor;
-                
+
                 // Check if this element is selected and change GUI.backgroundColor
-                if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Contains(index))
+                if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
                 {
                     bool isSmartSelection = IsSmartSelection(key, index);
-                    
+
                     if (isSmartSelection)
                     {
                         // Smart selection - darker greenish color for the box
@@ -315,14 +381,14 @@ namespace NaughtyAttributes.Editor
                 {
                     GUI.backgroundColor = Color.white; // Normal box color
                 }
-                
+
                 GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
                 GUI.backgroundColor = originalBackgroundColor;
             }
-            
+
             // Draw delete button (X) on the right side
             Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
-            
+
             // Style for the X button - no background, just text like reorder icon
             GUIStyle deleteButtonStyle = new GUIStyle()
             {
@@ -333,14 +399,14 @@ namespace NaughtyAttributes.Editor
                 margin = new RectOffset(0, 0, 0, 0),
                 border = new RectOffset(0, 0, 0, 0)
             };
-            
+
             // Set colors - gray like reorder icon, white on hover
             Color iconColor = EditorGUIUtility.isProSkin ? new Color(0.7f, 0.7f, 0.7f) : new Color(0.4f, 0.4f, 0.4f);
             deleteButtonStyle.normal.textColor = iconColor;
             deleteButtonStyle.hover.textColor = Color.white;
             deleteButtonStyle.normal.background = null; // No background
             deleteButtonStyle.hover.background = null;   // No background on hover
-            
+
             // Draw the delete button
             if (GUI.Button(deleteButtonRect, "×", deleteButtonStyle))
             {
@@ -348,55 +414,36 @@ namespace NaughtyAttributes.Editor
                 arrayProp.DeleteArrayElementAtIndex(index);
                 return;
             }
-            
+
             // Adjust element drawing area to not overlap with delete button
             r.width -= 25;
-            
+
             // Block mouse events on potential reorder handle area (without visual overlay)
             Rect handleBlockRect = new Rect(r.x - 20, r.y, 15, r.height);
-            if (handleBlockRect.Contains(currentEvent.mousePosition))
-            {
-                if (currentEvent.type == EventType.MouseDown || 
-                    currentEvent.type == EventType.MouseDrag || 
-                    currentEvent.type == EventType.MouseUp)
-                {
-                    currentEvent.Use(); // Block Unity's reorder without visual overlay
-                }
-            }
-            
+            handleBlockRect.IsBlockClick(currentEvent);
+
             // Handle keyboard shortcuts for selected elements
-            if (currentEvent.type == EventType.KeyDown && _selectedIndices.ContainsKey(key) && _selectedIndices[key].Count > 0)
+            if (ReorderableEditorGUIController.CheckAnyKeyboardShortcutPressed(arrayLists, key, currentEvent))
             {
-                if (currentEvent.keyCode == KeyCode.Delete || currentEvent.keyCode == KeyCode.Backspace)
-                {
-                    DeleteSelectedElements(key, _selectedIndices[key]);
-                    currentEvent.Use();
-                    return;
-                }
-                else if (currentEvent.keyCode == KeyCode.D && (currentEvent.control || currentEvent.command))
-                {
-                    DuplicateSelectedElements(key, _selectedIndices[key]);
-                    currentEvent.Use();
-                    return;
-                }
+                return;
             }
-            
+
             // Custom drag & drop handling
-            HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
+            ReorderableEditorGUIController.HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
 
             SerializedProperty element = arrayProp.GetArrayElementAtIndex(index);
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
-            
+
             // Calculate proper position within fullBackgroundRect
             Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
-            
+
             // Draw decorative reorder icon
             Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
             if (currentEvent.type == EventType.Repaint)
             {
                 Color reorderIconColor = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.4f, 0.4f, 0.4f);
-                
+
                 // Draw three horizontal lines to simulate reorder handle
                 for (int i = 0; i < 3; i++)
                 {
@@ -404,248 +451,16 @@ namespace NaughtyAttributes.Editor
                     EditorGUI.DrawRect(lineRect, reorderIconColor);
                 }
             }
-            
+
             // Center the PropertyField within the background rect with proper padding (accounting for reorder icon)
             Rect propertyRect = new Rect(
                 elementRect.x + 22.0f + indent, // Extra space for reorder icon
-                elementRect.y + 1.0f, 
+                elementRect.y + 1.0f,
                 elementRect.width - 44.0f - indent, // Account for both icon and delete button space
                 EditorGUIUtility.singleLineHeight
             );
 
             EditorGUI.PropertyField(propertyRect, element, true);
-        }
-
-        private static void HandleCustomDragAndDrop(ListKey key, int index, Rect r, Event currentEvent, SerializedProperty arrayProp)
-        {
-            // Calculate insertion index during drag if mouse is over this element
-            if (_isDragging && _dragKey?.Equals(key) == true && r.Contains(currentEvent.mousePosition))
-            {
-                // Check if mouse is in top half or bottom half of element
-                float elementCenter = r.y + r.height * 0.5f;
-                if (currentEvent.mousePosition.y < elementCenter)
-                {
-                    _dragInsertIndex = index; // Insert before this element
-                }
-                else
-                {
-                    _dragInsertIndex = index + 1; // Insert after this element
-                }
-            }
-
-            switch (currentEvent.type)
-            {
-                case EventType.MouseDown:
-                    if (currentEvent.button == 0 && r.Contains(currentEvent.mousePosition))
-                    {
-                        // Store mouse down position but don't start drag yet
-                        if (!_mouseDownPositions.ContainsKey(key))
-                            _mouseDownPositions[key] = new Dictionary<int, Vector2>();
-                        _mouseDownPositions[key][index] = currentEvent.mousePosition;
-                        
-                        // Handle selection
-                        HandleElementSelection(key, index, currentEvent);
-                        
-                        // Only Use() event for multi-selection operations (Ctrl/Shift)
-                        // Let normal clicks through for PropertyField interaction
-                        if (currentEvent.control || currentEvent.command || currentEvent.shift)
-                        {
-                            currentEvent.Use();
-                        }
-                    }
-                    break;
-
-                case EventType.MouseDrag:
-                    // Only start drag if mouse moved enough and we have a mouse down position
-                    if (!_isDragging && _mouseDownPositions.ContainsKey(key) && _mouseDownPositions[key].ContainsKey(index))
-                    {
-                        Vector2 mouseDownPos = _mouseDownPositions[key][index];
-                        float dragDistance = Vector2.Distance(mouseDownPos, currentEvent.mousePosition);
-                        
-                        // Start drag only if mouse moved more than threshold
-                        if (dragDistance > 5f) // 5 pixel threshold
-                        {
-                            HandleDragStart(key, index, currentEvent, arrayProp);
-                        }
-                    }
-                    
-                    if (_isDragging && _dragKey?.Equals(key) == true)
-                    {
-                        HandleDragUpdate(key, currentEvent, arrayProp);
-                        currentEvent.Use();
-                    }
-                    break;
-
-                case EventType.MouseUp:
-                    if (_isDragging && _dragKey?.Equals(key) == true)
-                    {
-                        HandleDragEnd(key, currentEvent, arrayProp);
-                        currentEvent.Use();
-                    }
-                    else if (_mouseDownPositions.ContainsKey(key) && _mouseDownPositions[key].ContainsKey(index))
-                    {
-                        // This was a click without drag - allow normal property interaction
-                        _mouseDownPositions[key].Remove(index);
-                    }
-                    break;
-
-                case EventType.Repaint:
-                    // Draw insertion line during drag
-                    if (_isDragging && _dragKey?.Equals(key) == true && _dragInsertIndex >= 0)
-                    {
-                        DrawInsertionLine(r, index, arrayProp);
-                    }
-                    break;
-            }
-        }
-
-        private static void HandleDragStart(ListKey key, int index, Event currentEvent, SerializedProperty arrayProp)
-        {
-            // Handle selection first
-            HandleElementSelection(key, index, currentEvent);
-            
-            // Ensure this element is selected for drag
-            if (!_selectedIndices.ContainsKey(key))
-                _selectedIndices[key] = new HashSet<int>();
-                
-            var selection = _selectedIndices[key];
-            
-            // If element not selected, try smart selection for normal click
-            if (!selection.Contains(index) && !currentEvent.control && !currentEvent.command)
-            {
-                var smartSelection = GetOrCreateSmartSelection(key, index, arrayProp.arraySize);
-                if (smartSelection.Count > 1)
-                {
-                    _selectedIndices[key] = smartSelection;
-                }
-                else
-                {
-                    selection.Clear();
-                    selection.Add(index);
-                }
-            }
-            
-            // Start drag with current selection
-            _dragKey = key;
-            _dragIndices = new HashSet<int>(_selectedIndices[key]);
-            _isDragging = true;
-            _dragInsertIndex = -1;
-        }
-
-        private static void HandleDragUpdate(ListKey key, Event currentEvent, SerializedProperty arrayProp)
-        {
-            // Store current mouse position for later calculation
-            // We'll calculate the actual insertion index during repaint when we have all element rects
-            _dragInsertIndex = -1;
-            
-            // Request repaint to update insertion line
-            GUI.changed = true;
-        }
-
-        private static void HandleDragEnd(ListKey key, Event currentEvent, SerializedProperty arrayProp)
-        {
-            // If no specific insertion index was calculated, try to determine from mouse position
-            if (_dragInsertIndex < 0)
-            {
-                // Find closest element based on mouse Y position
-                float mouseY = currentEvent.mousePosition.y;
-                int closestIndex = Mathf.RoundToInt(mouseY / EditorGUIUtility.singleLineHeight);
-                _dragInsertIndex = Mathf.Clamp(closestIndex, 0, arrayProp.arraySize);
-            }
-            
-            if (_dragInsertIndex >= 0 && _dragIndices != null && _dragIndices.Count > 0)
-            {
-                // Only perform reorder if insertion index is different from current positions
-                var sortedDragIndices = _dragIndices.OrderBy(i => i).ToList();
-                bool needsReorder = _dragInsertIndex < sortedDragIndices[0] || 
-                                   _dragInsertIndex > sortedDragIndices[sortedDragIndices.Count - 1] + 1;
-                
-                if (needsReorder)
-                {
-                    PerformCustomReorder(arrayProp, _dragIndices, _dragInsertIndex);
-                }
-            }
-            
-            // Reset drag state
-            _dragKey = null;
-            _dragIndices = null;
-            _isDragging = false;
-            _dragInsertIndex = -1;
-        }
-
-        private static void DrawInsertionLine(Rect elementRect, int index, SerializedProperty arrayProp)
-        {
-            if (_dragInsertIndex == index)
-            {
-                float y = elementRect.y - 1;
-                EditorGUI.DrawRect(new Rect(elementRect.x, y, elementRect.width, 2), Color.cyan);
-            }
-            else if (_dragInsertIndex == index + 1)
-            {
-                float y = elementRect.y + elementRect.height - 1;
-                EditorGUI.DrawRect(new Rect(elementRect.x, y, elementRect.width, 2), Color.cyan);
-            }
-        }
-
-        private static void PerformCustomReorder(SerializedProperty arrayProp, HashSet<int> dragIndices, int insertIndex)
-        {
-            Undo.RecordObject(arrayProp.serializedObject.targetObject, "Reorder Multiple Elements");
-            
-            // Convert to sorted list for consistent ordering
-            var sortedIndices = dragIndices.OrderBy(i => i).ToList();
-            
-            // Store data of dragged elements
-            var draggedData = new List<object>();
-            foreach (int idx in sortedIndices)
-            {
-                if (idx >= 0 && idx < arrayProp.arraySize)
-                {
-                    var element = arrayProp.GetArrayElementAtIndex(idx);
-                    draggedData.Add(GetElementData(element));
-                }
-            }
-            
-            // Remove dragged elements (in reverse order to maintain indices)
-            var reversedIndices = sortedIndices.OrderByDescending(i => i).ToList();
-            foreach (int idx in reversedIndices)
-            {
-                if (idx >= 0 && idx < arrayProp.arraySize)
-                {
-                    arrayProp.DeleteArrayElementAtIndex(idx);
-                }
-            }
-            
-            // Adjust insert index if needed
-            int finalInsertIndex = insertIndex;
-            foreach (int removedIndex in sortedIndices)
-            {
-                if (removedIndex < insertIndex)
-                    finalInsertIndex--;
-            }
-            
-            // Insert elements at new position
-            for (int i = 0; i < draggedData.Count; i++)
-            {
-                int insertAt = Mathf.Max(0, finalInsertIndex + i);
-                if (insertAt <= arrayProp.arraySize)
-                {
-                    arrayProp.InsertArrayElementAtIndex(insertAt);
-                    var newElement = arrayProp.GetArrayElementAtIndex(insertAt);
-                    SetElementData(newElement, draggedData[i]);
-                }
-            }
-            
-            // Update selection to new positions
-            var newSelection = new HashSet<int>();
-            for (int i = 0; i < draggedData.Count; i++)
-            {
-                newSelection.Add(finalInsertIndex + i);
-            }
-            
-            var key = new ListKey(arrayProp.serializedObject.targetObject.GetInstanceID(), arrayProp.propertyPath);
-            _selectedIndices[key] = newSelection;
-            
-            arrayProp.serializedObject.ApplyModifiedProperties();
         }
 
         private static float GetElementHeight(SerializedProperty arrayProp, int index)
@@ -681,327 +496,21 @@ namespace NaughtyAttributes.Editor
         {
             var so = arrayProp.serializedObject;
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
-            _arrayLists.Remove(key);
-            _selectedIndices.Remove(key);
-            _mouseDownPositions.Remove(key);
+            arrayLists.Remove(key);
+            ReorderableEditorGUIController.SelectedIndices.Remove(key);
+            ReorderableEditorGUIController.MouseDownPositions.Remove(key);
             _elementBackgrounds.Remove(key);
             InternalEditorUtility.RepaintAllViews();
-        }
-
-        private static void HandleElementSelection(ListKey key, int index, Event currentEvent)
-        {
-            if (!_selectedIndices.ContainsKey(key))
-            {
-                _selectedIndices[key] = new HashSet<int>();
-            }
-
-            var selectedSet = _selectedIndices[key];
-
-            if (currentEvent.button == 0) // Left click
-            {
-                if (currentEvent.control || currentEvent.command) // Ctrl/Cmd + Click
-                {
-                    // Toggle selection
-                    if (selectedSet.Contains(index))
-                        selectedSet.Remove(index);
-                    else
-                        selectedSet.Add(index);
-                }
-                else if (currentEvent.shift) // Shift + Click
-                {
-                    // Range selection
-                    if (selectedSet.Count > 0)
-                    {
-                        int lastSelected = selectedSet.Max();
-                        int start = Mathf.Min(lastSelected, index);
-                        int end = Mathf.Max(lastSelected, index);
-                        
-                        for (int i = start; i <= end; i++)
-                        {
-                            selectedSet.Add(i);
-                        }
-                    }
-                    else
-                    {
-                        selectedSet.Add(index);
-                    }
-                }
-                else // Normal click
-                {
-                    // Simple single selection (smart selection will be handled in mouse up)
-                    selectedSet.Clear();
-                    selectedSet.Add(index);
-                }
-            }
-            else if (currentEvent.button == 1) // Right click
-            {
-                // If right-clicking on unselected item, select it first
-                if (!selectedSet.Contains(index))
-                {
-                    selectedSet.Clear();
-                    selectedSet.Add(index);
-                }
-                
-                // Show context menu for selected elements
-                ShowElementContextMenu(key, selectedSet);
-            }
-        }
-
-        private static void ShowElementContextMenu(ListKey key, HashSet<int> selectedIndices)
-        {
-            GenericMenu menu = new GenericMenu();
-
-            if (selectedIndices.Count == 1)
-            {
-                menu.AddItem(new GUIContent($"Delete Element"), false, () => DeleteSelectedElements(key, selectedIndices));
-                menu.AddItem(new GUIContent($"Duplicate Element"), false, () => DuplicateSelectedElements(key, selectedIndices));
-            }
-            else if (selectedIndices.Count > 1)
-            {
-                menu.AddItem(new GUIContent($"Delete {selectedIndices.Count} Elements"), false, () => DeleteSelectedElements(key, selectedIndices));
-                menu.AddItem(new GUIContent($"Duplicate {selectedIndices.Count} Elements"), false, () => DuplicateSelectedElements(key, selectedIndices));
-            }
-
-            menu.ShowAsContext();
-        }
-
-        private static void ShowArrayContextMenu(SerializedProperty arrayProp)
-        {
-            var so = arrayProp.serializedObject;
-            var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
-            bool hasSelection = _selectedIndices.ContainsKey(key) && _selectedIndices[key].Count > 0;
-            
-            GenericMenu menu = new GenericMenu();
-
-            // Selection-based operations
-            if (hasSelection)
-            {
-                int selectedCount = _selectedIndices[key].Count;
-                menu.AddItem(new GUIContent($"Delete Selected ({selectedCount})"), false, () => DeleteSelectedElements(key, _selectedIndices[key]));
-                menu.AddItem(new GUIContent($"Duplicate Selected ({selectedCount})"), false, () => DuplicateSelectedElements(key, _selectedIndices[key]));
-                menu.AddSeparator("");
-            }
-
-            // Clear Array
-            menu.AddItem(new GUIContent("Clear Array"), false, () => ClearArray(arrayProp));
-
-            menu.AddSeparator("");
-
-            // Remove Duplicates (only for ObjectReference arrays)
-            if (IsObjectReferenceArray(arrayProp) && arrayProp.arraySize > 1)
-            {
-                menu.AddItem(new GUIContent("Remove Duplicates"), false, () => RemoveDuplicates(arrayProp));
-            }
-            else
-            {
-                menu.AddDisabledItem(new GUIContent("Remove Duplicates"));
-            }
-
-            // Remove Null References
-            if (IsObjectReferenceArray(arrayProp) && HasNullReferences(arrayProp))
-            {
-                menu.AddItem(new GUIContent("Remove Null References"), false, () => RemoveNullReferences(arrayProp));
-            }
-            else
-            {
-                menu.AddDisabledItem(new GUIContent("Remove Null References"));
-            }
-
-            menu.AddSeparator("");
-
-            // Sort Array (only for compatible types)
-            if (CanSortArray(arrayProp) && arrayProp.arraySize > 1)
-            {
-                var sortMenuText = GetSortMenuText(arrayProp);
-                menu.AddItem(new GUIContent(sortMenuText), false, () => SortArray(arrayProp));
-            }
-            else
-            {
-                menu.AddDisabledItem(new GUIContent("Sort"));
-            }
-
-            // Reverse Array
-            if (arrayProp.arraySize > 1)
-            {
-                menu.AddItem(new GUIContent("Reverse"), false, () => ReverseArray(arrayProp));
-            }
-            else
-            {
-                menu.AddDisabledItem(new GUIContent("Reverse"));
-            }
-
-            menu.ShowAsContext();
-        }
-
-        private static void DeleteSelectedElements(ListKey key, HashSet<int> selectedIndices)
-        {
-            var arrayProp = FindArrayPropertyByKey(key);
-            if (arrayProp == null) return;
-
-            Undo.RecordObject(arrayProp.serializedObject.targetObject, "Delete Selected Elements");
-
-            // Sort indices in descending order to maintain correct indices when deleting
-            var sortedIndices = selectedIndices.OrderByDescending(i => i).ToList();
-            
-            foreach (int index in sortedIndices)
-            {
-                if (index >= 0 && index < arrayProp.arraySize)
-                {
-                    arrayProp.DeleteArrayElementAtIndex(index);
-                }
-            }
-
-            // Clear selection after deletion
-            _selectedIndices[key].Clear();
-
-            arrayProp.serializedObject.ApplyModifiedProperties();
-        }
-
-        private static void DuplicateSelectedElements(ListKey key, HashSet<int> selectedIndices)
-        {
-            var arrayProp = FindArrayPropertyByKey(key);
-            if (arrayProp == null) return;
-
-            Undo.RecordObject(arrayProp.serializedObject.targetObject, "Duplicate Selected Elements");
-
-            // Sort indices to process from end to beginning to maintain indices
-            var sortedIndices = selectedIndices.OrderByDescending(i => i).ToList();
-            HashSet<int> newSelection = new HashSet<int>();
-
-            foreach (int index in sortedIndices)
-            {
-                if (index >= 0 && index < arrayProp.arraySize)
-                {
-                    // Insert new element after current one
-                    arrayProp.InsertArrayElementAtIndex(index);
-                    
-                    // The new element will be at index + 1, add to new selection
-                    newSelection.Add(index + 1);
-                }
-            }
-
-            // Update selection to new duplicated elements
-            _selectedIndices[key] = newSelection;
-
-            arrayProp.serializedObject.ApplyModifiedProperties();
-        }
-
-        private static HashSet<int> GetOrCreateSmartSelection(ListKey key, int draggedIndex, int arraySize)
-        {
-            // Check if we already have a manual selection that includes the dragged element
-            if (_selectedIndices.ContainsKey(key) && _selectedIndices[key].Contains(draggedIndex))
-            {
-                return _selectedIndices[key];
-            }
-
-            // Create smart selection: find adjacent elements of the same type
-            var smartSelection = new HashSet<int>();
-            var arrayProp = FindArrayPropertyByKey(key);
-            if (arrayProp == null || draggedIndex < 0 || draggedIndex >= arraySize)
-            {
-                smartSelection.Add(draggedIndex);
-                return smartSelection;
-            }
-
-            // Get the type/value of the dragged element
-            var draggedElement = arrayProp.GetArrayElementAtIndex(draggedIndex);
-            var draggedType = GetElementTypeInfo(draggedElement);
-
-            // Start with the dragged element
-            smartSelection.Add(draggedIndex);
-
-            // Look backwards for similar elements
-            for (int i = draggedIndex - 1; i >= 0; i--)
-            {
-                var element = arrayProp.GetArrayElementAtIndex(i);
-                if (IsSimilarElement(draggedElement, element, draggedType))
-                {
-                    smartSelection.Add(i);
-                }
-                else
-                {
-                    break; // Stop at first different element
-                }
-            }
-
-            // Look forwards for similar elements
-            for (int i = draggedIndex + 1; i < arraySize; i++)
-            {
-                var element = arrayProp.GetArrayElementAtIndex(i);
-                if (IsSimilarElement(draggedElement, element, draggedType))
-                {
-                    smartSelection.Add(i);
-                }
-                else
-                {
-                    break; // Stop at first different element
-                }
-            }
-
-            // Update the selection cache
-            _selectedIndices[key] = smartSelection;
-            
-            return smartSelection;
-        }
-
-        private static string GetElementTypeInfo(SerializedProperty element)
-        {
-            // Return a type signature for comparison
-            switch (element.propertyType)
-            {
-                case SerializedPropertyType.ObjectReference:
-                    var obj = element.objectReferenceValue;
-                    if (obj != null)
-                        return obj.GetType().Name;
-                    return "null_object";
-                
-                case SerializedPropertyType.Enum:
-                    return $"enum_{element.enumNames?.Length ?? 0}";
-                
-                default:
-                    return element.propertyType.ToString();
-            }
-        }
-
-        private static bool IsSimilarElement(SerializedProperty reference, SerializedProperty other, string referenceType)
-        {
-            // Check if elements are of similar type and potentially groupable
-            var otherType = GetElementTypeInfo(other);
-            
-            // Same basic type
-            if (referenceType != otherType)
-                return false;
-
-            // For object references, check for same type or both null
-            if (reference.propertyType == SerializedPropertyType.ObjectReference)
-            {
-                var refObj = reference.objectReferenceValue;
-                var otherObj = other.objectReferenceValue;
-                
-                // Both null - similar
-                if (refObj == null && otherObj == null)
-                    return true;
-                
-                // One null, one not - different
-                if (refObj == null || otherObj == null)
-                    return false;
-                
-                // Same type - similar
-                return refObj.GetType() == otherObj.GetType();
-            }
-
-            // For primitives, same property type means similar
-            return true;
         }
 
         private static bool IsSmartSelection(ListKey key, int index)
         {
             // Check if this selection was created by smart grouping
             // vs manual Ctrl+click selection
-            if (!_selectedIndices.ContainsKey(key))
+            if (!ReorderableEditorGUIController.SelectedIndices.ContainsKey(key))
                 return false;
                 
-            var selection = _selectedIndices[key];
+            var selection = ReorderableEditorGUIController.SelectedIndices[key];
             if (selection.Count <= 1)
                 return false;
                 
@@ -1023,111 +532,10 @@ namespace NaughtyAttributes.Editor
             // If all indices are consecutive, it's likely a smart selection
             return sortedIndices[sortedIndices.Length - 1] - sortedIndices[0] == sortedIndices.Length - 1;
         }
-
-        private static object GetElementData(SerializedProperty element)
-        {
-            // Store element data based on property type
-            switch (element.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    return element.intValue;
-                case SerializedPropertyType.Float:
-                    return element.floatValue;
-                case SerializedPropertyType.String:
-                    return element.stringValue;
-                case SerializedPropertyType.Boolean:
-                    return element.boolValue;
-                case SerializedPropertyType.ObjectReference:
-                    return element.objectReferenceValue;
-                case SerializedPropertyType.Vector2:
-                    return element.vector2Value;
-                case SerializedPropertyType.Vector3:
-                    return element.vector3Value;
-                case SerializedPropertyType.Vector4:
-                    return element.vector4Value;
-                case SerializedPropertyType.Vector2Int:
-                    return element.vector2IntValue;
-                case SerializedPropertyType.Vector3Int:
-                    return element.vector3IntValue;
-                case SerializedPropertyType.Enum:
-                    return element.enumValueIndex;
-                case SerializedPropertyType.Color:
-                    return element.colorValue;
-                case SerializedPropertyType.Rect:
-                    return element.rectValue;
-                case SerializedPropertyType.Bounds:
-                    return element.boundsValue;
-                default:
-                    // For complex types, we'll copy the entire property
-                    return null; // Will handle differently
-            }
-        }
-
-        private static void SetElementData(SerializedProperty element, object data)
-        {
-            if (data == null) return;
-
-            switch (element.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    element.intValue = (int)data;
-                    break;
-                case SerializedPropertyType.Float:
-                    element.floatValue = (float)data;
-                    break;
-                case SerializedPropertyType.String:
-                    element.stringValue = (string)data;
-                    break;
-                case SerializedPropertyType.Boolean:
-                    element.boolValue = (bool)data;
-                    break;
-                case SerializedPropertyType.ObjectReference:
-                    element.objectReferenceValue = (Object)data;
-                    break;
-                case SerializedPropertyType.Vector2:
-                    element.vector2Value = (Vector2)data;
-                    break;
-                case SerializedPropertyType.Vector3:
-                    element.vector3Value = (Vector3)data;
-                    break;
-                case SerializedPropertyType.Vector4:
-                    element.vector4Value = (Vector4)data;
-                    break;
-                case SerializedPropertyType.Vector2Int:
-                    element.vector2IntValue = (Vector2Int)data;
-                    break;
-                case SerializedPropertyType.Vector3Int:
-                    element.vector3IntValue = (Vector3Int)data;
-                    break;
-                case SerializedPropertyType.Enum:
-                    element.enumValueIndex = (int)data;
-                    break;
-                case SerializedPropertyType.Color:
-                    element.colorValue = (Color)data;
-                    break;
-                case SerializedPropertyType.Rect:
-                    element.rectValue = (Rect)data;
-                    break;
-                case SerializedPropertyType.Bounds:
-                    element.boundsValue = (Bounds)data;
-                    break;
-            }
-        }
         
         #endregion
 
         #region Array Utility Methods
-        
-        private static SerializedProperty FindArrayPropertyByKey(ListKey key)
-        {
-            // Try to find the array property using the cached ReorderableList
-            if (_arrayLists.ContainsKey(key))
-            {
-                var reorderableList = _arrayLists[key];
-                return reorderableList.serializedProperty;
-            }
-            return null;
-        }
         
         private static void ClearArray(SerializedProperty arrayProp)
         {

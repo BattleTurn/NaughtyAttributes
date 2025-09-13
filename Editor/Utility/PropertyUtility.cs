@@ -1,14 +1,121 @@
-﻿using UnityEditor;
+﻿using System;
 using System.Reflection;
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEditor;
+using Object = UnityEngine.Object;
 
 namespace NaughtyAttributes.Editor
 {
     public static class PropertyUtility
     {
+        public static void SetElementData(this SerializedProperty element, object data)
+        {
+            if (data == null) return;
+
+            switch (element.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    element.intValue = (int)data;
+                    break;
+                case SerializedPropertyType.Float:
+                    element.floatValue = (float)data;
+                    break;
+                case SerializedPropertyType.String:
+                    element.stringValue = (string)data;
+                    break;
+                case SerializedPropertyType.Boolean:
+                    element.boolValue = (bool)data;
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                case SerializedPropertyType.ExposedReference:
+                    element.objectReferenceValue = (Object)data;
+                    break;
+                case SerializedPropertyType.Vector2:
+                    element.vector2Value = (Vector2)data;
+                    break;
+                case SerializedPropertyType.Vector3:
+                    element.vector3Value = (Vector3)data;
+                    break;
+                case SerializedPropertyType.Vector4:
+                    element.vector4Value = (Vector4)data;
+                    break;
+                case SerializedPropertyType.Vector2Int:
+                    element.vector2IntValue = (Vector2Int)data;
+                    break;
+                case SerializedPropertyType.Vector3Int:
+                    element.vector3IntValue = (Vector3Int)data;
+                    break;
+                case SerializedPropertyType.Enum:
+                    element.enumValueIndex = (int)data;
+                    break;
+                case SerializedPropertyType.Color:
+                    element.colorValue = (Color)data;
+                    break;
+                case SerializedPropertyType.Rect:
+                    element.rectValue = (Rect)data;
+                    break;
+                case SerializedPropertyType.Bounds:
+                    element.boundsValue = (Bounds)data;
+                    break;
+                case SerializedPropertyType.Quaternion:
+                    element.quaternionValue = (Quaternion)data;
+                    break;
+                case SerializedPropertyType.RectInt:
+                    element.rectIntValue = (RectInt)data;
+                    break;
+                case SerializedPropertyType.BoundsInt:
+                    element.boundsIntValue = (BoundsInt)data;
+                    break;
+                case SerializedPropertyType.ManagedReference:
+                    element.managedReferenceValue = data;
+                    break;
+                case SerializedPropertyType.Hash128:
+                    element.hash128Value = (Hash128)data;
+                    break;
+            }
+        }
+
+        public static object GetElementData(this SerializedProperty element)
+        {
+            // Store element data based on property type
+            switch (element.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    return element.intValue;
+                case SerializedPropertyType.Float:
+                    return element.floatValue;
+                case SerializedPropertyType.String:
+                    return element.stringValue;
+                case SerializedPropertyType.Boolean:
+                    return element.boolValue;
+                case SerializedPropertyType.ObjectReference:
+                    return element.objectReferenceValue;
+                case SerializedPropertyType.Vector2:
+                    return element.vector2Value;
+                case SerializedPropertyType.Vector3:
+                    return element.vector3Value;
+                case SerializedPropertyType.Vector4:
+                    return element.vector4Value;
+                case SerializedPropertyType.Vector2Int:
+                    return element.vector2IntValue;
+                case SerializedPropertyType.Vector3Int:
+                    return element.vector3IntValue;
+                case SerializedPropertyType.Enum:
+                    return element.enumValueIndex;
+                case SerializedPropertyType.Color:
+                    return element.colorValue;
+                case SerializedPropertyType.Rect:
+                    return element.rectValue;
+                case SerializedPropertyType.Bounds:
+                    return element.boundsValue;
+                default:
+                    // For complex types, we'll copy the entire property
+                    return null; // Will handle differently
+            }
+        }
+
         public static T GetAttribute<T>(SerializedProperty property) where T : class
         {
             T[] attributes = GetAttributes<T>(property);

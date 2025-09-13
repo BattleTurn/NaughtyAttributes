@@ -385,59 +385,105 @@ namespace NaughtyAttributes.Editor
         {
             if (_drawerCacheBuilt) return;
             _drawerCacheBuilt = true;
+            
             try
             {
                 var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                foreach (var asm in assemblies)
+                foreach (var assembly in assemblies)
                 {
-                    Type[] types;
-                    try { types = asm.GetTypes(); }
-                    catch { continue; }
-                    foreach (var t in types)
-                    {
-                        if (t == null) continue;
-                        if (t.IsAbstract) continue;
-                        if (!typeof(PropertyDrawer).IsAssignableFrom(t)) continue;
-                        // Gather all CustomPropertyDrawer attributes on this drawer
-                        var cpds = t.GetCustomAttributes(true).Where(a => a.GetType().Name == "CustomPropertyDrawer").ToArray();
-                        if (cpds.Length == 0) continue;
-                        foreach (var cpd in cpds)
-                        {
-                            // Unity's CustomPropertyDrawer has internal fields: m_Type, m_UseForChildren
-                            var cpdType = cpd.GetType();
-                            var fType = cpdType.GetField("m_Type", BindingFlags.NonPublic | BindingFlags.Instance);
-                            var fUseChildren = cpdType.GetField("m_UseForChildren", BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (fType == null) continue;
-                            var target = fType.GetValue(cpd) as Type;
-                            if (target == null) continue;
-                            bool useChildren = false;
-                            if (fUseChildren != null)
-                            {
-                                try { useChildren = (bool)fUseChildren.GetValue(cpd); } catch { }
-                            }
-
-                            if (typeof(PropertyAttribute).IsAssignableFrom(target))
-                            {
-                                _attrDrawerTargets.Add(target);
-                            }
-                            else
-                            {
-                                _typeDrawerTargets.Add(target);
-                                if (useChildren)
-                                {
-                                    // Include derived types if requested
-                                    foreach (var dt in types)
-                                    {
-                                        if (dt == null || dt == target) continue;
-                                        if (target.IsAssignableFrom(dt)) _typeDrawerTargets.Add(dt);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ProcessAssemblyForDrawers(assembly);
                 }
             }
             catch { /* swallow – cache best effort */ }
+        }
+
+        private static void ProcessAssemblyForDrawers(Assembly assembly)
+        {
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch { return; }
+
+            foreach (var drawerType in types)
+            {
+                if (!IsValidPropertyDrawerType(drawerType)) continue;
+                ProcessPropertyDrawerType(drawerType, types);
+            }
+        }
+
+        private static bool IsValidPropertyDrawerType(Type type)
+        {
+            return type != null 
+                && !type.IsAbstract 
+                && typeof(PropertyDrawer).IsAssignableFrom(type);
+        }
+
+        private static void ProcessPropertyDrawerType(Type drawerType, Type[] allTypes)
+        {
+            var customDrawerAttributes = GetCustomPropertyDrawerAttributes(drawerType);
+            if (customDrawerAttributes.Length == 0) return;
+
+            foreach (var attribute in customDrawerAttributes)
+            {
+                ProcessCustomPropertyDrawerAttribute(attribute, allTypes);
+            }
+        }
+
+        private static object[] GetCustomPropertyDrawerAttributes(Type drawerType)
+        {
+            return drawerType.GetCustomAttributes(true)
+                           .Where(a => a.GetType().Name == "CustomPropertyDrawer")
+                           .ToArray();
+        }
+
+        private static void ProcessCustomPropertyDrawerAttribute(object customDrawerAttribute, Type[] allTypes)
+        {
+            var (targetType, useChildren) = ExtractDrawerAttributeInfo(customDrawerAttribute);
+            if (targetType == null) return;
+
+            if (typeof(PropertyAttribute).IsAssignableFrom(targetType))
+            {
+                _attrDrawerTargets.Add(targetType);
+            }
+            else
+            {
+                _typeDrawerTargets.Add(targetType);
+                if (useChildren)
+                {
+                    AddDerivedTypes(targetType, allTypes);
+                }
+            }
+        }
+
+        private static (Type targetType, bool useChildren) ExtractDrawerAttributeInfo(object customDrawerAttribute)
+        {
+            var attributeType = customDrawerAttribute.GetType();
+            var typeField = attributeType.GetField("m_Type", BindingFlags.NonPublic | BindingFlags.Instance);
+            var useChildrenField = attributeType.GetField("m_UseForChildren", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            if (typeField == null) return (null, false);
+            
+            var targetType = typeField.GetValue(customDrawerAttribute) as Type;
+            bool useChildren = false;
+            
+            if (useChildrenField != null)
+            {
+                try { useChildren = (bool)useChildrenField.GetValue(customDrawerAttribute); }
+                catch { /* ignore reflection errors */ }
+            }
+            
+            return (targetType, useChildren);
+        }
+
+        private static void AddDerivedTypes(Type baseType, Type[] allTypes)
+        {
+            foreach (var derivedType in allTypes)
+            {
+                if (derivedType == null || derivedType == baseType) continue;
+                if (baseType.IsAssignableFrom(derivedType))
+                {
+                    _typeDrawerTargets.Add(derivedType);
+                }
+            }
         }
 
         private static bool HasExternalUnityPropertyDrawer(FieldInfo fi)
