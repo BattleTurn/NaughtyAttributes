@@ -51,6 +51,9 @@ namespace NaughtyAttributes.Editor
             // >>> Arrays/Lists (except string): draw with our ReorderableList helper
             if (property.isArray && property.propertyType != SerializedPropertyType.String)
             {
+                // Apply all decorator attributes before drawing ReorderableList
+                ProcessDecoratorAttributes(property);
+                
                 ReorderableEditorGUI.CreateReorderableList(default, property);
                 return;
             }
@@ -276,6 +279,281 @@ namespace NaughtyAttributes.Editor
             {
                 int prev = _indentRestoreStack.Pop();
                 if (prev != int.MinValue) EditorGUI.indentLevel = prev;
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Decorator Attributes Processing
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Process all decorator attributes for a property. This handles attributes that add visual elements
+        /// before/after the main property drawing (like SpaceAttribute, HeaderAttribute, etc.)
+        /// </summary>
+        private static void ProcessDecoratorAttributes(SerializedProperty property)
+        {
+            // Get all PropertyAttributes on this field
+            var allAttributes = PropertyUtility.GetAttributes<PropertyAttribute>(property);
+            if (allAttributes == null || allAttributes.Length == 0)
+                return;
+
+            foreach (var attr in allAttributes)
+            {
+                // Check for DecoratorDrawer first
+                var decoratorDrawerType = GetDecoratorDrawerType(attr.GetType());
+                if (decoratorDrawerType != null)
+                {
+                    ProcessAttributeWithDecoratorDrawer(attr, decoratorDrawerType);
+                    continue;
+                }
+
+                // Check for PropertyDrawer
+                var propertyDrawerType = GetPropertyDrawerType(attr.GetType());
+                if (propertyDrawerType != null)
+                {
+                    ProcessAttributeWithPropertyDrawer(property, attr, propertyDrawerType);
+                    continue;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Create a decorator drawer instance and call its OnGUI method
+        /// </summary>
+        private static void ProcessAttributeWithDecoratorDrawer(PropertyAttribute attr, System.Type drawerType)
+        {
+            try
+            {
+                var drawer = System.Activator.CreateInstance(drawerType) as DecoratorDrawer;
+                if (drawer != null)
+                {
+                    // Set the attribute field using reflection
+                    var attributeField = typeof(DecoratorDrawer).GetField("m_Attribute", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    attributeField?.SetValue(drawer, attr);
+
+                    // Get height and draw
+                    float height = drawer.GetHeight();
+                    if (height > 0)
+                    {
+                        var rect = EditorGUILayout.GetControlRect(false, height);
+                        drawer.OnGUI(rect);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // Log error but continue processing other attributes
+                Debug.LogWarning($"Failed to process decorator attribute {attr.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Create a property drawer instance and call its OnGUI method
+        /// </summary>
+        private static void ProcessAttributeWithPropertyDrawer(SerializedProperty property, PropertyAttribute attr, System.Type drawerType)
+        {
+            try
+            {
+                var drawer = System.Activator.CreateInstance(drawerType) as PropertyDrawer;
+                if (drawer != null)
+                {
+                    // Set the attribute field using reflection
+                    var attributeField = typeof(PropertyDrawer).GetField("m_Attribute", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    attributeField?.SetValue(drawer, attr);
+
+                    // Set the fieldInfo field using reflection
+                    var owner = PropertyUtility.GetTargetObjectWithProperty(property);
+                    var fieldInfo = owner != null ? ReflectionUtility.GetField(owner, property.name) : null;
+                    var fieldInfoField = typeof(PropertyDrawer).GetField("m_FieldInfo", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    fieldInfoField?.SetValue(drawer, fieldInfo);
+
+                    // Get height and draw
+                    var label = PropertyUtility.GetLabel(property);
+                    float height = drawer.GetPropertyHeight(property, label);
+                    if (height > 0)
+                    {
+                        var rect = EditorGUILayout.GetControlRect(true, height);
+                        drawer.OnGUI(rect, property, label);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // Log error but continue processing other attributes
+                Debug.LogWarning($"Failed to process property attribute {attr.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Find the DecoratorDrawer type for a given attribute type
+        /// </summary>
+        private static System.Type GetDecoratorDrawerType(System.Type attributeType)
+        {
+            if (attributeType == null) return null;
+
+            // Build cache if needed
+            if (!_decoratorDrawerCacheBuilt)
+            {
+                BuildDecoratorDrawerCache();
+            }
+
+            _decoratorDrawerMappings.TryGetValue(attributeType, out var drawerType);
+            return drawerType;
+        }
+
+        /// <summary>
+        /// Find the PropertyDrawer type for a given attribute type
+        /// </summary>
+        private static System.Type GetPropertyDrawerType(System.Type attributeType)
+        {
+            if (attributeType == null) return null;
+
+            // Build cache if needed
+            if (!_propertyDrawerCacheBuilt)
+            {
+                BuildPropertyDrawerCache();
+            }
+
+            _propertyDrawerMappings.TryGetValue(attributeType, out var drawerType);
+            return drawerType;
+        }
+
+        // Cache for decorator drawer mappings
+        private static bool _decoratorDrawerCacheBuilt = false;
+        private static readonly System.Collections.Generic.Dictionary<System.Type, System.Type> _decoratorDrawerMappings = 
+            new System.Collections.Generic.Dictionary<System.Type, System.Type>();
+
+        // Cache for property drawer mappings
+        private static bool _propertyDrawerCacheBuilt = false;
+        private static readonly System.Collections.Generic.Dictionary<System.Type, System.Type> _propertyDrawerMappings = 
+            new System.Collections.Generic.Dictionary<System.Type, System.Type>();
+
+        /// <summary>
+        /// Build cache of DecoratorDrawer mappings from all loaded assemblies
+        /// </summary>
+        private static void BuildDecoratorDrawerCache()
+        {
+            if (_decoratorDrawerCacheBuilt) return;
+            _decoratorDrawerCacheBuilt = true;
+
+            try
+            {
+                var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var assembly in assemblies)
+                {
+                    ProcessAssemblyForDecoratorDrawers(assembly);
+                }
+            }
+            catch 
+            { 
+                // Silently handle any reflection errors during cache building
+            }
+        }
+
+        /// <summary>
+        /// Build cache of PropertyDrawer mappings from all loaded assemblies
+        /// </summary>
+        private static void BuildPropertyDrawerCache()
+        {
+            if (_propertyDrawerCacheBuilt) return;
+            _propertyDrawerCacheBuilt = true;
+
+            try
+            {
+                var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var assembly in assemblies)
+                {
+                    ProcessAssemblyForPropertyDrawers(assembly);
+                }
+            }
+            catch 
+            { 
+                // Silently handle any reflection errors during cache building
+            }
+        }
+
+        /// <summary>
+        /// Process an assembly to find DecoratorDrawer types and their target attributes
+        /// </summary>
+        private static void ProcessAssemblyForDecoratorDrawers(System.Reflection.Assembly assembly)
+        {
+            System.Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch { return; }
+
+            foreach (var drawerType in types)
+            {
+                if (!IsValidDecoratorDrawerType(drawerType)) continue;
+                ProcessDecoratorDrawerType(drawerType);
+            }
+        }
+
+        /// <summary>
+        /// Process an assembly to find PropertyDrawer types and their target attributes
+        /// </summary>
+        private static void ProcessAssemblyForPropertyDrawers(System.Reflection.Assembly assembly)
+        {
+            System.Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch { return; }
+
+            foreach (var drawerType in types)
+            {
+                if (!IsValidPropertyDrawerType(drawerType)) continue;
+                ProcessPropertyDrawerTypeForCache(drawerType);
+            }
+        }
+
+        /// <summary>
+        /// Process a PropertyDrawer type to extract its target attribute mappings for cache
+        /// </summary>
+        private static void ProcessPropertyDrawerTypeForCache(System.Type drawerType)
+        {
+            var customDrawerAttributes = drawerType.GetCustomAttributes(true)
+                                                  .Where(a => a.GetType().Name == "CustomPropertyDrawer")
+                                                  .ToArray();
+
+            foreach (var attribute in customDrawerAttributes)
+            {
+                var targetType = ExtractDrawerAttributeInfo(attribute).targetType;
+                if (targetType != null && typeof(PropertyAttribute).IsAssignableFrom(targetType))
+                {
+                    // Add to PropertyDrawer mappings
+                    _propertyDrawerMappings[targetType] = drawerType;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if a type is a valid DecoratorDrawer
+        /// </summary>
+        private static bool IsValidDecoratorDrawerType(System.Type type)
+        {
+            return type != null 
+                && !type.IsAbstract 
+                && typeof(DecoratorDrawer).IsAssignableFrom(type);
+        }
+
+        /// <summary>
+        /// Process a DecoratorDrawer type to extract its target attribute mappings
+        /// </summary>
+        private static void ProcessDecoratorDrawerType(System.Type drawerType)
+        {
+            var customDrawerAttributes = drawerType.GetCustomAttributes(true)
+                                                  .Where(a => a.GetType().Name == "CustomPropertyDrawer")
+                                                  .ToArray();
+
+            foreach (var attribute in customDrawerAttributes)
+            {
+                var targetType = ExtractDrawerAttributeInfo(attribute).targetType;
+                if (targetType != null && typeof(PropertyAttribute).IsAssignableFrom(targetType))
+                {
+                    // Only add if it's really for DecoratorDrawer (not PropertyDrawer)
+                    _decoratorDrawerMappings[targetType] = drawerType;
+                }
             }
         }
 
