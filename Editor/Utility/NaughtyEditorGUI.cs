@@ -106,11 +106,25 @@ namespace NaughtyAttributes.Editor
             var (owner, field) = ResolveOwnerAndField(property);
 
             bool enabled = meta.enabled;
+            
+            // Store original value to detect real changes
+            string originalValue = GetPropertyValueAsString(property);
+            
             bool changedByUser = DrawThisNode(property, enabled);
             if (changedByUser)
             {
-                property.serializedObject.ApplyModifiedProperties();
-                MetaAttributeExtensions.RunAfterChangeCallbacks(property);
+                // Check if value actually changed
+                string newValue = GetPropertyValueAsString(property);
+                bool reallyChanged = originalValue != newValue;
+                
+                Debug.Log($"[PropertyField_Layout] Property {property.propertyPath} EndChangeCheck=true. Event: {Event.current.type}, RealChange: {reallyChanged}");
+                
+                if (reallyChanged)
+                {
+                    Debug.Log($"[PropertyField_Layout] Value actually changed from '{originalValue}' to '{newValue}', calling ApplyModifiedProperties");
+                    property.serializedObject.ApplyModifiedProperties();
+                    MetaAttributeExtensions.RunAfterChangeCallbacks(property);
+                }
             }
 
             // 2) Run validators once (Min/Max…)
@@ -299,6 +313,10 @@ namespace NaughtyAttributes.Editor
 
             foreach (var attr in allAttributes)
             {
+                // Skip special case attributes that are handled elsewhere
+                if (IsSpecialCaseAttribute(attr))
+                    continue;
+
                 // Check for DecoratorDrawer first
                 var decoratorDrawerType = GetDecoratorDrawerType(attr.GetType());
                 if (decoratorDrawerType != null)
@@ -307,14 +325,43 @@ namespace NaughtyAttributes.Editor
                     continue;
                 }
 
-                // Check for PropertyDrawer
-                var propertyDrawerType = GetPropertyDrawerType(attr.GetType());
-                if (propertyDrawerType != null)
+                // Check for PropertyDrawer (only for non-array properties)
+                if (!property.isArray)
                 {
-                    ProcessAttributeWithPropertyDrawer(property, attr, propertyDrawerType);
-                    continue;
+                    var propertyDrawerType = GetPropertyDrawerType(attr.GetType());
+                    if (propertyDrawerType != null)
+                    {
+                        ProcessAttributeWithPropertyDrawer(property, attr, propertyDrawerType);
+                        continue;
+                    }
                 }
             }
+        }
+
+        /// <summary>
+        /// Check if an attribute is a special case that should be handled elsewhere
+        /// </summary>
+        private static bool IsSpecialCaseAttribute(PropertyAttribute attr)
+        {
+            if (attr == null) return false;
+            
+            var attrType = attr.GetType();
+            
+            // NaughtyAttributes special cases
+            if (attrType.Namespace != null && attrType.Namespace.StartsWith("NaughtyAttributes"))
+            {
+                // These are handled by special case drawers or other systems
+                return attrType.Name == "ExpandableAttribute" ||
+                       attrType.Name == "ReorderableListAttribute" ||
+                       attrType.Name == "ShowAssetPreviewAttribute" ||
+                       attrType.Name == "ProgressBarAttribute" ||
+                       attrType.Name == "DrawerAttribute" ||
+                       typeof(SpecialCaseDrawerAttribute).IsAssignableFrom(attrType) ||
+                       typeof(ValidatorAttribute).IsAssignableFrom(attrType) ||
+                       typeof(MetaAttribute).IsAssignableFrom(attrType);
+            }
+            
+            return false;
         }
 
         /// <summary>
@@ -355,6 +402,12 @@ namespace NaughtyAttributes.Editor
         {
             try
             {
+                // Additional safety checks for property types
+                if (!IsValidPropertyForDrawer(property, attr))
+                {
+                    return;
+                }
+
                 var drawer = System.Activator.CreateInstance(drawerType) as PropertyDrawer;
                 if (drawer != null)
                 {
@@ -385,6 +438,33 @@ namespace NaughtyAttributes.Editor
                 // Log error but continue processing other attributes
                 Debug.LogWarning($"Failed to process property attribute {attr.GetType().Name}: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Check if a property is valid for a specific drawer
+        /// </summary>
+        private static bool IsValidPropertyForDrawer(SerializedProperty property, PropertyAttribute attr)
+        {
+            if (property == null || attr == null) return false;
+            
+            var attrType = attr.GetType();
+            
+            // Range attribute only works with numeric types
+            if (attrType == typeof(RangeAttribute))
+            {
+                return property.propertyType == SerializedPropertyType.Float ||
+                       property.propertyType == SerializedPropertyType.Integer;
+            }
+            
+            // Multiline/TextArea only works with strings
+            if (attrType == typeof(MultilineAttribute) || attrType == typeof(TextAreaAttribute))
+            {
+                return property.propertyType == SerializedPropertyType.String;
+            }
+            
+            // For other attributes, do basic validation
+            return property.propertyType != SerializedPropertyType.Generic || 
+                   property.propertyType == SerializedPropertyType.ObjectReference;
         }
 
         /// <summary>
@@ -646,6 +726,12 @@ namespace NaughtyAttributes.Editor
 
                 bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndProperty();
+                
+                if (changed)
+                {
+                    Debug.Log($"[DrawThisNode] Property {property.propertyPath} detected change. Event: {Event.current.type}, mousePosition: {Event.current.mousePosition}");
+                }
+                
                 return changed;
             }
         }
@@ -1791,6 +1877,53 @@ namespace NaughtyAttributes.Editor
             tex.SetPixels(pixels);
             tex.Apply();
             return tex;
+        }
+
+        /// <summary>
+        /// Get property value as string for comparison
+        /// </summary>
+        private static string GetPropertyValueAsString(SerializedProperty property)
+        {
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    return property.intValue.ToString();
+                case SerializedPropertyType.Boolean:
+                    return property.boolValue.ToString();
+                case SerializedPropertyType.Float:
+                    return property.floatValue.ToString();
+                case SerializedPropertyType.String:
+                    return property.stringValue ?? "";
+                case SerializedPropertyType.Color:
+                    return property.colorValue.ToString();
+                case SerializedPropertyType.ObjectReference:
+                    return property.objectReferenceValue?.ToString() ?? "null";
+                case SerializedPropertyType.LayerMask:
+                    return property.intValue.ToString();
+                case SerializedPropertyType.Enum:
+                    return property.enumValueIndex.ToString();
+                case SerializedPropertyType.Vector2:
+                    return property.vector2Value.ToString();
+                case SerializedPropertyType.Vector3:
+                    return property.vector3Value.ToString();
+                case SerializedPropertyType.Vector4:
+                    return property.vector4Value.ToString();
+                case SerializedPropertyType.Rect:
+                    return property.rectValue.ToString();
+                case SerializedPropertyType.ArraySize:
+                    return property.arraySize.ToString();
+                case SerializedPropertyType.Character:
+                    return property.intValue.ToString();
+                case SerializedPropertyType.AnimationCurve:
+                    return property.animationCurveValue?.ToString() ?? "null";
+                case SerializedPropertyType.Bounds:
+                    return property.boundsValue.ToString();
+                case SerializedPropertyType.Quaternion:
+                    return property.quaternionValue.ToString();
+                default:
+                    // For complex types, use the property path + hasMultipleDifferentValues
+                    return $"{property.propertyPath}_{property.hasMultipleDifferentValues}";
+            }
         }
     }
 }

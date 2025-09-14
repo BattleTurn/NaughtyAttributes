@@ -22,6 +22,11 @@ namespace NaughtyAttributes.Editor
 
         private static readonly Dictionary<ListKey, Dictionary<int, Color>> _elementBackgrounds = new();
         
+        // Track mouse state for property drag detection
+        private static Vector2 _lastMouseDownPosition;
+        private static bool _isPropertyDragCandidate = false;
+        private static readonly float DRAG_THRESHOLD = 3f; // pixels
+        
         private const float INDENT_WIDTH = 15.0f;
 
         #endregion
@@ -186,7 +191,9 @@ namespace NaughtyAttributes.Editor
                 // This ensures no reorder handles are drawn
                 if (index >= 0 && index < arrayProp.arraySize)
                 {
-                    DrawElement(arrayProp, key, r, index);
+                    // SIMPLE APPROACH: Just draw elements without ANY custom interaction handling
+                    // Let Unity handle ALL events (property editing, focus, etc.)
+                    DrawElementForPropertyEditing(arrayProp, key, r, index);
                 }
             };
 
@@ -201,11 +208,18 @@ namespace NaughtyAttributes.Editor
                 return GetElementHeight(arrayProp, index);
             };
 
-            // Force disable dragging to prevent default reorder icons
-            reorderableList.draggable = false;
+            // Try enabling draggable to see if it fixes property editing
+            // We override drawing anyway so default handles won't show
+            reorderableList.draggable = true;
+            
+            // Disable selection to prevent focus conflicts
+            reorderableList.index = -1; // No selection
             
             // Disable default reorder callbacks to prevent conflicts
             reorderableList.onReorderCallback = null;
+            
+            // Disable selection callbacks that might interfere with property editing
+            reorderableList.onSelectCallback = null;
 
             reorderableList.onAddCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoAddButton(l);
             reorderableList.onRemoveCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoRemoveButton(l);
@@ -391,12 +405,42 @@ namespace NaughtyAttributes.Editor
             // Adjust drawing area
             r.width -= 25;
 
-            // Handle interactions
-            HandleElementInteractions(key, index, r, currentEvent, arrayProp);
-
-            // Draw reorder icon and property field
+            // Draw reorder icon and property field FIRST
+            // This allows Unity to set up the property controls before we handle interactions
             DrawReorderIcon(elementRect, currentEvent);
             DrawPropertyField(elementRect, arrayProp, index);
+
+            // TEMPORARILY DISABLE ALL INTERACTION HANDLING for debugging
+            // HandleElementInteractions(key, index, r, currentEvent, arrayProp);
+        }
+
+        /// <summary>
+        /// Simplified element drawing for property editing - no interactions
+        /// </summary>
+        private static void DrawElementForPropertyEditing(SerializedProperty arrayProp, ListKey key, Rect r, int index)
+        {
+            if (!arrayProp.isExpanded) return;
+
+            Event currentEvent = Event.current;
+
+            // Calculate rects first
+            Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
+            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
+
+            // Draw visual elements
+            DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
+            
+            // Handle delete button
+            if (DrawDeleteButton(r, arrayProp, index)) return;
+
+            // Adjust drawing area
+            r.width -= 25;
+
+            // ONLY draw visual elements - no interaction handling
+            DrawReorderIcon(elementRect, currentEvent);
+            DrawPropertyField(elementRect, arrayProp, index);
+            
+            // NO custom interaction handling - let Unity handle everything
         }
 
         private static void DrawElementBackground(Rect fullBackgroundRect, ListKey key, int index, Event currentEvent)
@@ -494,14 +538,138 @@ namespace NaughtyAttributes.Editor
             Rect handleBlockRect = new Rect(r.x - 20, r.y, 15, r.height);
             if (handleBlockRect.IsBlockClick(currentEvent)) return;
 
+            // Calculate property field area (avoid the delete button on the right)
+            Rect propertyFieldRect = new Rect(r.x + 25, r.y, r.width - 50, r.height);
+            
+            // SIMPLE FIX: Just skip ALL interaction handling if mouse is in property field area
+            // This allows Unity to handle property editing completely without interference
+            if (propertyFieldRect.Contains(currentEvent.mousePosition))
+            {
+                Debug.Log($"[ReorderableList] Mouse in property field area, skipping ALL interaction handling");
+                return;
+            }
+            
+            // Check if Unity is currently editing a property field
+            // If so, don't interfere with the editing process
+            if (IsUnityEditingField(propertyFieldRect, currentEvent))
+            {
+                Debug.Log($"[ReorderableList] Unity is editing field, skipping interaction handling");
+                return;
+            }
+            
+            // Debug: Log when we're in property field area
+            if (propertyFieldRect.Contains(currentEvent.mousePosition) && currentEvent.type == EventType.MouseDown)
+            {
+                var element = arrayProp.GetArrayElementAtIndex(index);
+                Debug.Log($"[ReorderableList] MouseDown in property field. Element type: {element?.propertyType}, Mouse pos: {currentEvent.mousePosition}, Field rect: {propertyFieldRect}");
+            }
+            
+            if (ShouldAllowPropertyFieldDrag(propertyFieldRect, currentEvent, arrayProp, index))
+            {
+                Debug.Log($"[ReorderableList] Blocking interaction for property drag. Event: {currentEvent.type}");
+                return; // Let property field handle the drag for value changes
+            }
+
             // Handle keyboard shortcuts
             if (ReorderableEditorGUIController.CheckAnyKeyboardShortcutPressed(arrayLists, key, currentEvent))
             {
                 return;
             }
 
-            // Handle custom drag & drop
-            ReorderableEditorGUIController.HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
+            // Handle custom drag & drop (only on non-property field areas)
+            // TEMPORARILY DISABLED for debugging
+            Debug.Log($"[ReorderableList] HandleCustomDragAndDrop call DISABLED for debugging");
+            // ReorderableEditorGUIController.HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
+        }
+
+        /// <summary>
+        /// Check if Unity is currently in the middle of editing a field
+        /// </summary>
+        private static bool IsUnityEditingField(Rect propertyFieldRect, Event currentEvent)
+        {
+            // More conservative check - only skip during text input events when there's a focused control
+            if (currentEvent.type == EventType.KeyDown || currentEvent.type == EventType.KeyUp)
+            {
+                bool isEditing = GUIUtility.keyboardControl != 0;
+                if (isEditing)
+                {
+                    Debug.Log($"[ReorderableList] Unity editing field (keyboard event). Control ID: {GUIUtility.keyboardControl}");
+                }
+                return isEditing;
+            }
+            
+            // Don't skip mouse events - let them through for focus/selection
+            return false;
+        }
+
+        /// <summary>
+        /// Determines if we should allow property field to handle drag for value changes
+        /// </summary>
+        private static bool ShouldAllowPropertyFieldDrag(Rect propertyFieldRect, Event currentEvent, SerializedProperty arrayProp, int index)
+        {
+            // TEMPORARILY DISABLED: Return false to allow all property interactions
+            // This is to debug if the property drag logic is causing the edit issues
+            Debug.Log($"[ReorderableList] ShouldAllowPropertyFieldDrag called but DISABLED for debugging");
+            return false;
+            
+            /*
+            if (!propertyFieldRect.Contains(currentEvent.mousePosition)) return false;
+            
+            var element = arrayProp.GetArrayElementAtIndex(index);
+            if (element == null) return false;
+
+            // Check if this property type supports value dragging
+            bool supportsValueDrag = element.propertyType switch
+            {
+                SerializedPropertyType.Float => true,
+                SerializedPropertyType.Integer => true,
+                SerializedPropertyType.Vector2 => true,
+                SerializedPropertyType.Vector3 => true,
+                SerializedPropertyType.Vector4 => true,
+                SerializedPropertyType.Vector2Int => true,
+                SerializedPropertyType.Vector3Int => true,
+                SerializedPropertyType.Quaternion => true,
+                SerializedPropertyType.Rect => true,
+                SerializedPropertyType.RectInt => true,
+                SerializedPropertyType.Bounds => true,
+                SerializedPropertyType.BoundsInt => true,
+                _ => false
+            };
+
+            if (!supportsValueDrag) return false;
+
+            // Track mouse state for intelligent drag detection
+            switch (currentEvent.type)
+            {
+                case EventType.MouseDown:
+                    _lastMouseDownPosition = currentEvent.mousePosition;
+                    _isPropertyDragCandidate = true;
+                    Debug.Log($"[ReorderableList] MouseDown on {element.propertyType} property. Allowing Unity focus. Position: {currentEvent.mousePosition}");
+                    return false; // Allow initial click for focus
+                    
+                case EventType.MouseDrag:
+                    if (_isPropertyDragCandidate)
+                    {
+                        float dragDistance = Vector2.Distance(_lastMouseDownPosition, currentEvent.mousePosition);
+                        Debug.Log($"[ReorderableList] MouseDrag detected. Distance: {dragDistance}, Threshold: {DRAG_THRESHOLD}");
+                        if (dragDistance > DRAG_THRESHOLD)
+                        {
+                            Debug.Log($"[ReorderableList] Blocking selection for property drag");
+                            // This is a real drag operation, block selection
+                            return true;
+                        }
+                    }
+                    return false;
+                    
+                case EventType.MouseUp:
+                    _isPropertyDragCandidate = false;
+                    Debug.Log($"[ReorderableList] MouseUp - resetting drag candidate state");
+                    return false;
+                    
+                default:
+                    return false;
+            }
+            */
         }
 
         private static void DrawReorderIcon(Rect elementRect, Event currentEvent)
@@ -535,7 +703,11 @@ namespace NaughtyAttributes.Editor
                 EditorGUIUtility.singleLineHeight
             );
 
-            EditorGUI.PropertyField(propertyRect, element, true);
+            // Debug property field drawing
+            Debug.Log($"[ReorderableList] Drawing property field for {element.propertyType} at rect {propertyRect}");
+            
+            // Try the simplest possible property field approach
+            EditorGUI.PropertyField(propertyRect, element, GUIContent.none, false);
         }
 
         private static float GetElementHeight(SerializedProperty arrayProp, int index)
