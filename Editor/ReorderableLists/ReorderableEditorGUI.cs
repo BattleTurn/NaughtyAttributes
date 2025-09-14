@@ -17,16 +17,16 @@ namespace NaughtyAttributes.Editor
     public static class ReorderableEditorGUI
     {
         #region Fields & Constants
-        
+
         internal static readonly Dictionary<ListKey, ReorderableList> arrayLists = new();
 
         private static readonly Dictionary<ListKey, Dictionary<int, Color>> _elementBackgrounds = new();
-        
+
         // Track mouse state for property drag detection
         private static Vector2 _lastMouseDownPosition;
         private static bool _isPropertyDragCandidate = false;
         private static readonly float DRAG_THRESHOLD = 3f; // pixels
-        
+
         private const float INDENT_WIDTH = 15.0f;
 
         #endregion
@@ -49,7 +49,7 @@ namespace NaughtyAttributes.Editor
 
             menu.ShowAsContext();
         }
-        
+
         /// <summary>
         /// Creates and renders a ReorderableList with enhanced drag & drop capabilities
         /// </summary>
@@ -74,13 +74,13 @@ namespace NaughtyAttributes.Editor
             ReorderableEditorGUIController.SelectedIndices.Clear();
             _elementBackgrounds.Clear();
         }
-        
+
         public static void ShowArrayContextMenu(SerializedProperty arrayProp)
         {
             var so = arrayProp.serializedObject;
             var key = new ListKey(so.targetObject ? so.targetObject.GetInstanceID() : 0, arrayProp.propertyPath);
             bool hasSelection = ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Count > 0;
-            
+
             GenericMenu menu = new GenericMenu();
 
             // Selection-based operations
@@ -173,10 +173,10 @@ namespace NaughtyAttributes.Editor
             Rect headerRect = new Rect();
 
             var reorderableList = new ReorderableList(so, arrayProp, false, true, true, true); // draggable = false
-            
+
             // Additional steps to ensure no reorder handles
             reorderableList.showDefaultBackground = true;
-            
+
             reorderableList.drawHeaderCallback = (Rect r) =>
             {
                 int indentLevel = EditorGUI.indentLevel;
@@ -193,7 +193,7 @@ namespace NaughtyAttributes.Editor
                 {
                     // SIMPLE APPROACH: Just draw elements without ANY custom interaction handling
                     // Let Unity handle ALL events (property editing, focus, etc.)
-                    DrawElementForPropertyEditing(arrayProp, key, r, index);
+                    DrawElement(arrayProp, key, r, index);
                 }
             };
 
@@ -210,37 +210,37 @@ namespace NaughtyAttributes.Editor
 
             // Try enabling draggable to see if it fixes property editing
             // We override drawing anyway so default handles won't show
-            reorderableList.draggable = true;
-            
+            reorderableList.draggable = false;
+
             // Disable selection to prevent focus conflicts
             reorderableList.index = -1; // No selection
-            
+
             // Disable default reorder callbacks to prevent conflicts
-            reorderableList.onReorderCallback = null;
-            
+            // reorderableList.onReorderCallback = null;
+
             // Disable selection callbacks that might interfere with property editing
-            reorderableList.onSelectCallback = null;
+            // reorderableList.onSelectCallback = null;
 
             reorderableList.onAddCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoAddButton(l);
             reorderableList.onRemoveCallback = (ReorderableList l) => ReorderableList.defaultBehaviours.DoRemoveButton(l);
-            
+
             reorderableList.drawNoneElementCallback = (Rect rr) =>
             {
                 DrawNoneElement(arrayProp, rr, reorderableList);
             };
-            
+
             reorderableList.drawFooterCallback = (Rect fr) =>
             {
                 DrawFooter(arrayProp, fr, reorderableList);
             };
-            
+
             return reorderableList;
         }
-        
+
         #endregion
 
         #region Layout & Rect Calculations
-        
+
         private static Rect CalculateListRect(Rect rect, SerializedProperty arrayProp, ReorderableList reorderableList)
         {
             if (rect == default)
@@ -275,7 +275,7 @@ namespace NaughtyAttributes.Editor
         private static Rect CalculateExpandedDropRect(Rect listRect, SerializedProperty arrayProp)
         {
             Rect expandedDropRect = new Rect(listRect.x, listRect.y, listRect.width, listRect.height);
-            
+
             if (arrayProp.isExpanded)
             {
                 // For expanded lists, extend significantly up to cover header
@@ -288,14 +288,14 @@ namespace NaughtyAttributes.Editor
                 expandedDropRect.y -= 4f;
                 expandedDropRect.height += 8f;
             }
-            
+
             return expandedDropRect;
         }
-        
+
         #endregion
 
         #region Drawing Methods
-        
+
         private static void DrawHeader(SerializedProperty arrayProp, Rect r)
         {
             var so = arrayProp.serializedObject;
@@ -303,7 +303,7 @@ namespace NaughtyAttributes.Editor
 
             // Build header content
             var headerContent = BuildHeaderContent(arrayProp, key);
-            
+
             // Calculate header rect
             Rect headerRect = CalculateHeaderRect(r, arrayProp);
 
@@ -321,7 +321,7 @@ namespace NaughtyAttributes.Editor
             string tooltip = BuildHeaderTooltip();
 
             // Add selection info if any elements are selected
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && 
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) &&
                 ReorderableEditorGUIController.SelectedIndices[key].Count > 0)
             {
                 int selectedCount = ReorderableEditorGUIController.SelectedIndices[key].Count;
@@ -372,7 +372,7 @@ namespace NaughtyAttributes.Editor
         {
             // Draw invisible label for proper spacing
             GUI.Label(headerRect, GUIContent.none);
-            
+
             // Store previous expansion state
             bool lastExpanded = arrayProp.isExpanded;
 
@@ -398,7 +398,7 @@ namespace NaughtyAttributes.Editor
 
             // Draw visual elements
             DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
-            
+
             // Handle delete button
             if (DrawDeleteButton(r, arrayProp, index)) return;
 
@@ -411,7 +411,7 @@ namespace NaughtyAttributes.Editor
             DrawPropertyField(elementRect, arrayProp, index);
 
             // TEMPORARILY DISABLE ALL INTERACTION HANDLING for debugging
-            // HandleElementInteractions(key, index, r, currentEvent, arrayProp);
+            HandleElementInteractions(key, index, r, currentEvent, arrayProp);
         }
 
         /// <summary>
@@ -429,7 +429,7 @@ namespace NaughtyAttributes.Editor
 
             // Draw visual elements
             DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
-            
+
             // Handle delete button
             if (DrawDeleteButton(r, arrayProp, index)) return;
 
@@ -439,7 +439,7 @@ namespace NaughtyAttributes.Editor
             // ONLY draw visual elements - no interaction handling
             DrawReorderIcon(elementRect, currentEvent);
             DrawPropertyField(elementRect, arrayProp, index);
-            
+
             // NO custom interaction handling - let Unity handle everything
         }
 
@@ -478,7 +478,7 @@ namespace NaughtyAttributes.Editor
             Color originalBackgroundColor = GUI.backgroundColor;
 
             // Check if this element is selected
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && 
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) &&
                 ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
             {
                 bool isSmartSelection = IsSmartSelection(key, index);
@@ -520,10 +520,10 @@ namespace NaughtyAttributes.Editor
                 border = new RectOffset(0, 0, 0, 0)
             };
 
-            Color iconColor = EditorGUIUtility.isProSkin 
-                ? new Color(0.7f, 0.7f, 0.7f) 
+            Color iconColor = EditorGUIUtility.isProSkin
+                ? new Color(0.7f, 0.7f, 0.7f)
                 : new Color(0.4f, 0.4f, 0.4f);
-            
+
             style.normal.textColor = iconColor;
             style.hover.textColor = Color.white;
             style.normal.background = null;
@@ -540,35 +540,32 @@ namespace NaughtyAttributes.Editor
 
             // Calculate property field area (avoid the delete button on the right)
             Rect propertyFieldRect = new Rect(r.x + 25, r.y, r.width - 50, r.height);
-            
+
             // SIMPLE FIX: Just skip ALL interaction handling if mouse is in property field area
             // This allows Unity to handle property editing completely without interference
             if (propertyFieldRect.Contains(currentEvent.mousePosition))
             {
-                Debug.Log($"[ReorderableList] Mouse in property field area, skipping ALL interaction handling");
+                // Mouse in property field - let Unity handle all interactions
                 return;
             }
-            
+
             // Check if Unity is currently editing a property field
             // If so, don't interfere with the editing process
             if (IsUnityEditingField(propertyFieldRect, currentEvent))
             {
-                Debug.Log($"[ReorderableList] Unity is editing field, skipping interaction handling");
+                // Unity is editing field - skip custom interactions
                 return;
             }
-            
-            // Debug: Log when we're in property field area
-            if (propertyFieldRect.Contains(currentEvent.mousePosition) && currentEvent.type == EventType.MouseDown)
-            {
-                var element = arrayProp.GetArrayElementAtIndex(index);
-                Debug.Log($"[ReorderableList] MouseDown in property field. Element type: {element?.propertyType}, Mouse pos: {currentEvent.mousePosition}, Field rect: {propertyFieldRect}");
-            }
-            
-            if (ShouldAllowPropertyFieldDrag(propertyFieldRect, currentEvent, arrayProp, index))
-            {
-                Debug.Log($"[ReorderableList] Blocking interaction for property drag. Event: {currentEvent.type}");
-                return; // Let property field handle the drag for value changes
-            }
+
+            // REMOVED: Blocking property drag logic
+            // Let Unity handle ALL property interactions by default
+            // SerializedProperty elementProp = arrayProp.GetArrayElementAtIndex(index);
+            // if (ShouldHandleNumberDrag(elementProp))
+            // {
+            //     Debug.Log($"[ReorderableList] Blocking interaction for property drag. Event: {currentEvent.type}");
+            //     HandleNumberDrag(propertyFieldRect, elementProp);
+            //     return; // Let property field handle the drag for value changes
+            // }
 
             // Handle keyboard shortcuts
             if (ReorderableEditorGUIController.CheckAnyKeyboardShortcutPressed(arrayLists, key, currentEvent))
@@ -577,8 +574,7 @@ namespace NaughtyAttributes.Editor
             }
 
             // Handle custom drag & drop (only on non-property field areas)
-            // TEMPORARILY DISABLED for debugging
-            Debug.Log($"[ReorderableList] HandleCustomDragAndDrop call DISABLED for debugging");
+            // Note: Currently disabled for debugging - can be re-enabled later
             // ReorderableEditorGUIController.HandleCustomDragAndDrop(key, index, r, currentEvent, arrayProp);
         }
 
@@ -597,7 +593,7 @@ namespace NaughtyAttributes.Editor
                 }
                 return isEditing;
             }
-            
+
             // Don't skip mouse events - let them through for focus/selection
             return false;
         }
@@ -605,21 +601,10 @@ namespace NaughtyAttributes.Editor
         /// <summary>
         /// Determines if we should allow property field to handle drag for value changes
         /// </summary>
-        private static bool ShouldAllowPropertyFieldDrag(Rect propertyFieldRect, Event currentEvent, SerializedProperty arrayProp, int index)
+        private static bool ShouldHandleNumberDrag(SerializedProperty element)
         {
-            // TEMPORARILY DISABLED: Return false to allow all property interactions
-            // This is to debug if the property drag logic is causing the edit issues
-            Debug.Log($"[ReorderableList] ShouldAllowPropertyFieldDrag called but DISABLED for debugging");
-            return false;
-            
-            /*
-            if (!propertyFieldRect.Contains(currentEvent.mousePosition)) return false;
-            
-            var element = arrayProp.GetArrayElementAtIndex(index);
-            if (element == null) return false;
-
             // Check if this property type supports value dragging
-            bool supportsValueDrag = element.propertyType switch
+            return element.propertyType switch
             {
                 SerializedPropertyType.Float => true,
                 SerializedPropertyType.Integer => true,
@@ -635,41 +620,74 @@ namespace NaughtyAttributes.Editor
                 SerializedPropertyType.BoundsInt => true,
                 _ => false
             };
+        }
 
-            if (!supportsValueDrag) return false;
+        private static void HandleNumberDrag(Rect propertyRect, SerializedProperty element)
+        {
+            Event currentEvent = Event.current;
+            int controlID = GUIUtility.GetControlID(FocusType.Passive);
 
-            // Track mouse state for intelligent drag detection
             switch (currentEvent.type)
             {
                 case EventType.MouseDown:
-                    _lastMouseDownPosition = currentEvent.mousePosition;
-                    _isPropertyDragCandidate = true;
-                    Debug.Log($"[ReorderableList] MouseDown on {element.propertyType} property. Allowing Unity focus. Position: {currentEvent.mousePosition}");
-                    return false; // Allow initial click for focus
-                    
-                case EventType.MouseDrag:
-                    if (_isPropertyDragCandidate)
+                    if (propertyRect.Contains(currentEvent.mousePosition) && currentEvent.button == 0)
                     {
-                        float dragDistance = Vector2.Distance(_lastMouseDownPosition, currentEvent.mousePosition);
-                        Debug.Log($"[ReorderableList] MouseDrag detected. Distance: {dragDistance}, Threshold: {DRAG_THRESHOLD}");
-                        if (dragDistance > DRAG_THRESHOLD)
-                        {
-                            Debug.Log($"[ReorderableList] Blocking selection for property drag");
-                            // This is a real drag operation, block selection
-                            return true;
-                        }
+                        GUIUtility.hotControl = controlID;
+                        _lastMouseDownPosition = currentEvent.mousePosition;
+                        currentEvent.Use();
                     }
-                    return false;
-                    
+                    break;
+
+                case EventType.MouseDrag:
+                    if (GUIUtility.hotControl == controlID)
+                    {
+                        float deltaX = currentEvent.mousePosition.x - _lastMouseDownPosition.x;
+                        ApplyDragDelta(element, deltaX);
+                        _lastMouseDownPosition = currentEvent.mousePosition;
+                        GUI.changed = true;
+                        currentEvent.Use();
+                    }
+                    break;
+
                 case EventType.MouseUp:
-                    _isPropertyDragCandidate = false;
-                    Debug.Log($"[ReorderableList] MouseUp - resetting drag candidate state");
-                    return false;
-                    
-                default:
-                    return false;
+                    if (GUIUtility.hotControl == controlID)
+                    {
+                        GUIUtility.hotControl = 0;
+                        currentEvent.Use();
+                    }
+                    break;
             }
-            */
+        }
+
+        private static void ApplyDragDelta(SerializedProperty element, float deltaX)
+        {
+            float sensitivity = Event.current.shift ? 0.1f : 1f; // Shift = fine control
+            float delta = deltaX * sensitivity;
+
+            switch (element.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    element.intValue = Mathf.RoundToInt(element.intValue + delta);
+                    break;
+
+                case SerializedPropertyType.Float:
+                    element.floatValue += delta * 0.1f; // Scale for float precision
+                    break;
+
+                case SerializedPropertyType.Vector2:
+                    var v2 = element.vector2Value;
+                    v2.x += delta * 0.1f;
+                    element.vector2Value = v2;
+                    break;
+
+                case SerializedPropertyType.Vector3:
+                    var v3 = element.vector3Value;
+                    v3.x += delta * 0.1f; // Drag affects X component
+                    element.vector3Value = v3;
+                    break;
+            }
+
+            element.serializedObject.ApplyModifiedProperties();
         }
 
         private static void DrawReorderIcon(Rect elementRect, Event currentEvent)
@@ -677,8 +695,8 @@ namespace NaughtyAttributes.Editor
             if (currentEvent.type != EventType.Repaint) return;
 
             Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
-            Color reorderIconColor = EditorGUIUtility.isProSkin 
-                ? new Color(0.6f, 0.6f, 0.6f) 
+            Color reorderIconColor = EditorGUIUtility.isProSkin
+                ? new Color(0.6f, 0.6f, 0.6f)
                 : new Color(0.4f, 0.4f, 0.4f);
 
             // Draw three horizontal lines to simulate reorder handle
@@ -703,11 +721,8 @@ namespace NaughtyAttributes.Editor
                 EditorGUIUtility.singleLineHeight
             );
 
-            // Debug property field drawing
-            Debug.Log($"[ReorderableList] Drawing property field for {element.propertyType} at rect {propertyRect}");
-            
             // Try the simplest possible property field approach
-            EditorGUI.PropertyField(propertyRect, element, GUIContent.none, false);
+            EditorGUI.PropertyField(propertyRect, element, true);
         }
 
         private static float GetElementHeight(SerializedProperty arrayProp, int index)
@@ -719,23 +734,23 @@ namespace NaughtyAttributes.Editor
         private static void DrawNoneElement(SerializedProperty arrayProp, Rect rr, ReorderableList reorderableList)
         {
             if (!arrayProp.isExpanded) return;
-            
+
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
             Rect indentedRect = new Rect(rr.x + indent, rr.y, rr.width - indent, rr.height);
-            
+
             ReorderableList.defaultBehaviours.DrawNoneElement(indentedRect, reorderableList.draggable);
         }
 
         private static void DrawFooter(SerializedProperty arrayProp, Rect fr, ReorderableList reorderableList)
         {
             if (!arrayProp.isExpanded) return;
-            
+
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
             // Reduce footer height by 1px to tighten the container
             Rect indentedRect = new Rect(fr.x + indent, fr.y, fr.width - indent, fr.height);
-            
+
             ReorderableList.defaultBehaviours.DrawFooter(indentedRect, reorderableList);
         }
 
@@ -756,14 +771,14 @@ namespace NaughtyAttributes.Editor
             // vs manual Ctrl+click selection
             if (!ReorderableEditorGUIController.SelectedIndices.ContainsKey(key))
                 return false;
-                
+
             var selection = ReorderableEditorGUIController.SelectedIndices[key];
             if (selection.Count <= 1)
                 return false;
-                
+
             // Smart selections typically have consecutive indices
             var sortedIndices = selection.OrderBy(i => i).ToArray();
-            
+
             // Check if this index is part of a consecutive group
             for (int i = 0; i < sortedIndices.Length - 1; i++)
             {
@@ -775,15 +790,15 @@ namespace NaughtyAttributes.Editor
                     break;
                 }
             }
-            
+
             // If all indices are consecutive, it's likely a smart selection
             return sortedIndices[sortedIndices.Length - 1] - sortedIndices[0] == sortedIndices.Length - 1;
         }
-        
+
         #endregion
 
         #region Array Utility Methods
-        
+
         private static void ClearArray(SerializedProperty arrayProp)
         {
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Clear Array");
@@ -829,14 +844,14 @@ namespace NaughtyAttributes.Editor
         {
             // Check if array has elements
             if (arrayProp.arraySize == 0) return false;
-            
+
             // Check first element to determine sortability
             var firstElement = arrayProp.GetArrayElementAtIndex(0);
-            
+
             // ObjectReference arrays - sortable by name
             if (firstElement.propertyType == SerializedPropertyType.ObjectReference)
                 return true;
-                
+
             // Numeric and comparable value types
             return IsNumericOrComparableType(firstElement.propertyType);
         }
@@ -864,17 +879,17 @@ namespace NaughtyAttributes.Editor
         private static string GetSortMenuText(SerializedProperty arrayProp)
         {
             if (arrayProp.arraySize == 0) return "Sort";
-            
+
             var firstElement = arrayProp.GetArrayElementAtIndex(0);
-            
+
             // ObjectReference arrays - sort by name
             if (firstElement.propertyType == SerializedPropertyType.ObjectReference)
                 return "Sort by Name";
-                
+
             // String arrays - sort alphabetically  
             if (firstElement.propertyType == SerializedPropertyType.String)
                 return "Sort Alphabetically";
-                
+
             // Numeric types - sort by value
             switch (firstElement.propertyType)
             {
@@ -901,7 +916,7 @@ namespace NaughtyAttributes.Editor
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Sort Array");
 
             var firstElement = arrayProp.GetArrayElementAtIndex(0);
-            
+
             // ObjectReference arrays - sort by name
             if (firstElement.propertyType == SerializedPropertyType.ObjectReference)
             {
@@ -952,11 +967,11 @@ namespace NaughtyAttributes.Editor
             }
 
             // Sort the values
-            values.Sort((a, b) => 
+            values.Sort((a, b) =>
             {
                 var comparableA = GetComparableFromValue(a, propertyType);
                 var comparableB = GetComparableFromValue(b, propertyType);
-                
+
                 if (comparableA == null && comparableB == null) return 0;
                 if (comparableA == null) return -1;
                 if (comparableB == null) return 1;
@@ -1065,7 +1080,7 @@ namespace NaughtyAttributes.Editor
                     return 0f;
             }
         }
-        
+
         #endregion
 
         #region Array Utility Methods (Continued)
@@ -1113,19 +1128,19 @@ namespace NaughtyAttributes.Editor
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Reverse Array");
 
             int size = arrayProp.arraySize;
-            
+
             // For ObjectReference arrays
             if (IsObjectReferenceArray(arrayProp))
             {
                 List<Object> objects = new List<Object>();
-                
+
                 // Collect all objects
                 for (int i = 0; i < size; i++)
                 {
                     var element = arrayProp.GetArrayElementAtIndex(i);
                     objects.Add(element.objectReferenceValue);
                 }
-                
+
                 // Reverse and reassign
                 objects.Reverse();
                 for (int i = 0; i < size; i++)
@@ -1146,16 +1161,16 @@ namespace NaughtyAttributes.Editor
 
             arrayProp.serializedObject.ApplyModifiedProperties();
         }
-        
+
         #endregion
 
         #region Drag & Drop System
-        
+
         private static void HandleDragAndDrop(SerializedProperty arrayProp, Rect dropRect)
         {
             Event evt = Event.current;
             if (evt == null || evt.type == EventType.Used) return;
-            
+
             if (!dropRect.Contains(evt.mousePosition)) return;
 
             // Early validation - only handle ObjectReference arrays
@@ -1203,11 +1218,11 @@ namespace NaughtyAttributes.Editor
 
             arrayProp.serializedObject.ApplyModifiedProperties();
         }
-        
+
         #endregion
 
         #region Type Detection & Validation
-        
+
         private static bool IsObjectReferenceArray(SerializedProperty arrayProp)
         {
             // Check existing elements first
@@ -1305,11 +1320,11 @@ namespace NaughtyAttributes.Editor
             }
             return false;
         }
-        
+
         #endregion
 
         #region Object Processing & Conversion
-        
+
         private static void AddCompatibleObjects(SerializedProperty arrayProp, Object[] objects, Type elementType)
         {
             foreach (var obj in objects)
@@ -1331,7 +1346,7 @@ namespace NaughtyAttributes.Editor
                 return obj;
 
             // SMART CONVERSIONS
-            
+
             // Texture2D → Sprite conversion
             if (elementType == typeof(Sprite) && obj is Texture2D texture)
             {
@@ -1358,7 +1373,7 @@ namespace NaughtyAttributes.Editor
             if (!string.IsNullOrEmpty(texturePath))
             {
                 var allAssets = AssetDatabase.LoadAllAssetsAtPath(texturePath);
-                
+
                 foreach (var asset in allAssets)
                 {
                     if (asset is Sprite sprite)
@@ -1393,7 +1408,7 @@ namespace NaughtyAttributes.Editor
                 newElement.objectReferenceValue = targetObject;
             }
         }
-        
+
         #endregion
     }
 }
