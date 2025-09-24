@@ -452,6 +452,7 @@ namespace NaughtyAttributes.Editor
             EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
 
             // Draw selection frame
+            DrawSmartSelection(fullBackgroundRect, key, index);
             // DrawSelectionFrame(fullBackgroundRect, key, index);
         }
 
@@ -470,6 +471,47 @@ namespace NaughtyAttributes.Editor
                 return EditorGUIUtility.isProSkin
                     ? new Color(0.20f, 0.20f, 0.20f, 1f)
                     : new Color(0.88f, 0.88f, 0.88f, 1f);
+            }
+        }
+
+        private static void DrawSmartSelection(Rect r, ListKey key, int index)
+        {
+            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
+            {
+                Color selectionColor;
+                
+                // Check if this is a smart selection (adjacent elements) vs manual selection
+                bool isSmartSelection = IsSmartSelection(key, index);
+                
+                if (isSmartSelection)
+                {
+                    // Smart selection - greenish color for grouped elements
+                    selectionColor = new Color(0.2f, 0.8f, 0.4f, 0.4f);
+                }
+                else
+                {
+                    // Manual selection - blue color
+                    selectionColor = new Color(0.3f, 0.5f, 1f, 0.4f);
+                }
+                
+                if (ReorderableEditorGUIController.SelectedIndices[key].Count == 1)
+                    selectionColor.a = 0.3f; // Single selection - lighter
+                else
+                    selectionColor.a = 0.5f; // Multi selection - more prominent
+                    
+                EditorGUI.DrawRect(r, selectionColor);
+                
+                // Add a small indicator for smart selection
+                if (isSmartSelection && ReorderableEditorGUIController.SelectedIndices[key].Count > 1)
+                {
+                    var indicatorRect = new Rect(r.x + r.width - 15, r.y + 2, 12, 12);
+                    EditorGUI.DrawRect(indicatorRect, new Color(0.1f, 0.6f, 0.2f, 0.8f));
+                    var style = new GUIStyle(EditorStyles.miniLabel);
+                    style.normal.textColor = Color.white;
+                    style.fontSize = 8;
+                    style.alignment = TextAnchor.MiddleCenter;
+                    GUI.Label(indicatorRect, "●", style);
+                }
             }
         }
 
