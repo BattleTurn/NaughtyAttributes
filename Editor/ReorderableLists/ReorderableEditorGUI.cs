@@ -452,7 +452,7 @@ namespace NaughtyAttributes.Editor
             EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
 
             // Draw selection frame
-            DrawSelectionFrame(fullBackgroundRect, key, index);
+            // DrawSelectionFrame(fullBackgroundRect, key, index);
         }
 
         private static Color GetAlternatingBackgroundColor(int index)
@@ -490,7 +490,6 @@ namespace NaughtyAttributes.Editor
             {
                 GUI.backgroundColor = Color.white; // Normal
             }
-
             GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
             GUI.backgroundColor = originalBackgroundColor;
         }
