@@ -8,9 +8,9 @@ namespace NaughtyAttributes.Editor
 {
     public static class ReorderableEditorGUIController
     {
-        private static readonly Dictionary<ListKey, HashSet<int>> _selectedIndices = new();
+        private readonly static Dictionary<ListKey, HashSet<int>> _selectedIndices = new();
 
-        private static readonly Dictionary<ListKey, Dictionary<int, Vector2>> _mouseDownPositions = new();
+        private readonly static Dictionary<ListKey, Dictionary<int, Vector2>> _mouseDownPositions = new();
 
         // Custom drag state
         private static ListKey? _dragKey = null;
@@ -176,7 +176,7 @@ namespace NaughtyAttributes.Editor
             // Store current mouse position for later calculation
             // We'll calculate the actual insertion index during repaint when we have all element rects
             _dragInsertIndex = -1;
-            
+
             // Request repaint to update insertion line
             GUI.changed = true;
         }
@@ -191,20 +191,20 @@ namespace NaughtyAttributes.Editor
                 int closestIndex = Mathf.RoundToInt(mouseY / EditorGUIUtility.singleLineHeight);
                 _dragInsertIndex = Mathf.Clamp(closestIndex, 0, arrayProp.arraySize);
             }
-            
+
             if (_dragInsertIndex >= 0 && _dragIndices != null && _dragIndices.Count > 0)
             {
                 // Only perform reorder if insertion index is different from current positions
                 var sortedDragIndices = _dragIndices.OrderBy(i => i).ToList();
-                bool needsReorder = _dragInsertIndex < sortedDragIndices[0] || 
+                bool needsReorder = _dragInsertIndex < sortedDragIndices[0] ||
                                    _dragInsertIndex > sortedDragIndices[sortedDragIndices.Count - 1] + 1;
-                
+
                 if (needsReorder)
                 {
                     PerformCustomReorder(arrayProp, _dragIndices, _dragInsertIndex);
                 }
             }
-            
+
             // Reset drag state
             _dragKey = null;
             _dragIndices = null;
@@ -216,7 +216,7 @@ namespace NaughtyAttributes.Editor
         {
             // Clear selections from other properties when starting new selection
             ClearOtherPropertySelections(key, currentEvent);
-            
+
             var selectedSet = EnsureSelectionExists(key);
 
             if (currentEvent.button == 0) // Left click
@@ -234,7 +234,7 @@ namespace NaughtyAttributes.Editor
             // Only clear other selections when starting a new selection operation
             // Don't clear when doing Ctrl+Click or Shift+Click on the same property
             bool isModifierClick = currentEvent.control || currentEvent.command || currentEvent.shift;
-            
+
             if (!isModifierClick)
             {
                 // Normal click: clear all other property selections
@@ -297,7 +297,7 @@ namespace NaughtyAttributes.Editor
                 int lastSelected = selectedSet.Max();
                 int start = Mathf.Min(lastSelected, index);
                 int end = Mathf.Max(lastSelected, index);
-                
+
                 for (int i = start; i <= end; i++)
                 {
                     selectedSet.Add(i);
@@ -324,7 +324,7 @@ namespace NaughtyAttributes.Editor
                 selectedSet.Clear();
                 selectedSet.Add(index);
             }
-            
+
             // Show context menu for selected elements
             ReorderableEditorGUI.ShowElementContextMenu(key, selectedSet);
         }
@@ -332,19 +332,19 @@ namespace NaughtyAttributes.Editor
         private static void PerformCustomReorder(SerializedProperty arrayProp, HashSet<int> dragIndices, int insertIndex)
         {
             Undo.RecordObject(arrayProp.serializedObject.targetObject, "Reorder Multiple Elements");
-            
+
             // Get sorted indices and backup data
             var sortedIndices = dragIndices.OrderBy(i => i).ToList();
             var draggedData = BackupDraggedElements(arrayProp, sortedIndices);
-            
+
             // Remove elements and calculate final insert position
             RemoveDraggedElements(arrayProp, sortedIndices);
             int finalInsertIndex = CalculateFinalInsertIndex(insertIndex, sortedIndices);
-            
+
             // Insert elements at new position and update selection
             InsertElementsAtNewPosition(arrayProp, draggedData, finalInsertIndex);
             UpdateSelectionAfterReorder(arrayProp, draggedData.Count, finalInsertIndex);
-            
+
             arrayProp.serializedObject.ApplyModifiedProperties();
         }
 
@@ -407,7 +407,7 @@ namespace NaughtyAttributes.Editor
             {
                 newSelection.Add(finalInsertIndex + i);
             }
-            
+
             var key = new ListKey(arrayProp.serializedObject.targetObject.GetInstanceID(), arrayProp.propertyPath);
             _selectedIndices[key] = newSelection;
         }
@@ -522,10 +522,10 @@ namespace NaughtyAttributes.Editor
                     if (obj != null)
                         return obj.GetType().Name;
                     return "null_object";
-                
+
                 case SerializedPropertyType.Enum:
                     return $"enum_{element.enumNames?.Length ?? 0}";
-                
+
                 default:
                     return element.propertyType.ToString();
             }

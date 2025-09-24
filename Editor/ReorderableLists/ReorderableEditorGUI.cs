@@ -317,7 +317,7 @@ namespace NaughtyAttributes.Editor
         private static GUIContent BuildHeaderContent(SerializedProperty arrayProp, ListKey key)
         {
             // Build header label with selection info
-            string label = $"{arrayProp.displayName}: {arrayProp.arraySize}";
+            string label = $"{arrayProp.displayName}";
             string tooltip = BuildHeaderTooltip();
 
             // Add selection info if any elements are selected
@@ -372,16 +372,25 @@ namespace NaughtyAttributes.Editor
         {
             // Draw invisible label for proper spacing
             GUI.Label(headerRect, GUIContent.none);
-
-            // Store previous expansion state
-            bool lastExpanded = arrayProp.isExpanded;
+            DrawArraySizeEditor(headerRect, arrayProp);
 
             // Draw the foldout
             arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, headerContent, true);
+        }
 
-            // Handle expansion state changes
-            if (lastExpanded != arrayProp.isExpanded)
+        private static void DrawArraySizeEditor(Rect headerRect, SerializedProperty arrayProp)
+        {
+            int indentLevel = EditorGUI.indentLevel > 1 ? EditorGUI.indentLevel - 1 : EditorGUI.indentLevel;
+            float indent = indentLevel * INDENT_WIDTH;
+
+            Rect sizeRect = new Rect(headerRect.x + indent, headerRect.y, 50, headerRect.height);
+            int newSize = EditorGUI.IntField(sizeRect, arrayProp.arraySize, GUIStyle.none);
+            newSize = Mathf.Max(0, newSize);
+            if (newSize != arrayProp.arraySize)
             {
+                Undo.RecordObject(arrayProp.serializedObject.targetObject, "Change Array Size");
+                arrayProp.arraySize = newSize;
+                arrayProp.serializedObject.ApplyModifiedProperties();
                 InvalidateListCache(arrayProp);
             }
         }
@@ -414,45 +423,14 @@ namespace NaughtyAttributes.Editor
             HandleElementInteractions(key, index, r, currentEvent, arrayProp);
         }
 
-        /// <summary>
-        /// Simplified element drawing for property editing - no interactions
-        /// </summary>
-        private static void DrawElementForPropertyEditing(SerializedProperty arrayProp, ListKey key, Rect r, int index)
-        {
-            if (!arrayProp.isExpanded) return;
-
-            Event currentEvent = Event.current;
-
-            // Calculate rects first
-            Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
-            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
-
-            // Draw visual elements
-            DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
-
-            // Handle delete button
-            if (DrawDeleteButton(r, arrayProp, index)) return;
-
-            // Adjust drawing area
-            r.width -= 25;
-
-            // ONLY draw visual elements - no interaction handling
-            DrawReorderIcon(elementRect, currentEvent);
-            DrawPropertyField(elementRect, arrayProp, index);
-
-            // NO custom interaction handling - let Unity handle everything
-        }
-
         private static void DrawElementBackground(Rect fullBackgroundRect, ListKey key, int index, Event currentEvent)
         {
             if (currentEvent.type != EventType.Repaint) return;
 
             // Draw alternating background
             Color backgroundColor = GetAlternatingBackgroundColor(index);
-            EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
 
-            // Draw selection frame
-            DrawSelectionFrame(fullBackgroundRect, key, index);
+            EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
         }
 
         private static Color GetAlternatingBackgroundColor(int index)
@@ -473,31 +451,9 @@ namespace NaughtyAttributes.Editor
             }
         }
 
-        private static void DrawSelectionFrame(Rect fullBackgroundRect, ListKey key, int index)
-        {
-            Color originalBackgroundColor = GUI.backgroundColor;
-
-            // Check if this element is selected
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) &&
-                ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
-            {
-                bool isSmartSelection = IsSmartSelection(key, index);
-                GUI.backgroundColor = isSmartSelection
-                    ? new Color(0.2f, 0.9f, 0.4f, 1f)  // Smart selection - green
-                    : new Color(0.4f, 0.6f, 1f, 1f);   // Manual selection - blue
-            }
-            else
-            {
-                GUI.backgroundColor = Color.white; // Normal
-            }
-
-            GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
-            GUI.backgroundColor = originalBackgroundColor;
-        }
-
         private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
         {
-            Rect deleteButtonRect = new Rect(r.xMax - 10, r.y - 3, 10, r.height);
+            Rect deleteButtonRect = new Rect(r.xMax - 10, r.y - 4, 10, r.height);
             GUIStyle deleteButtonStyle = CreateDeleteButtonStyle();
 
             if (GUI.Button(deleteButtonRect, "×", deleteButtonStyle))
@@ -510,15 +466,7 @@ namespace NaughtyAttributes.Editor
 
         private static GUIStyle CreateDeleteButtonStyle()
         {
-            var style = new GUIStyle()
-            {
-                fontSize = 12,
-                fontStyle = FontStyle.Normal,
-                alignment = TextAnchor.MiddleCenter,
-                padding = new RectOffset(0, 0, 0, 0),
-                margin = new RectOffset(0, 0, 0, 0),
-                border = new RectOffset(0, 0, 0, 0)
-            };
+            var style = CreateGUIStyle(FontStyle.Bold, TextAnchor.MiddleCenter);
 
             Color iconColor = EditorGUIUtility.isProSkin
                 ? new Color(0.7f, 0.7f, 0.7f)
@@ -530,6 +478,19 @@ namespace NaughtyAttributes.Editor
             style.hover.background = null;
 
             return style;
+        }
+
+        private static GUIStyle CreateGUIStyle(FontStyle fontStyle, TextAnchor textAnchor)
+        {
+            return new GUIStyle()
+            {
+                fontSize = 12,
+                fontStyle = fontStyle,
+                alignment = textAnchor,
+                padding = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0),
+                border = new RectOffset(0, 0, 0, 0)
+            };
         }
 
         private static void HandleElementInteractions(ListKey key, int index, Rect r, Event currentEvent, SerializedProperty arrayProp)
@@ -551,7 +512,7 @@ namespace NaughtyAttributes.Editor
 
             // Check if Unity is currently editing a property field
             // If so, don't interfere with the editing process
-            if (IsUnityEditingField(propertyFieldRect, currentEvent))
+            if (IsUnityEditingField(currentEvent))
             {
                 // Unity is editing field - skip custom interactions
                 return;
@@ -581,113 +542,17 @@ namespace NaughtyAttributes.Editor
         /// <summary>
         /// Check if Unity is currently in the middle of editing a field
         /// </summary>
-        private static bool IsUnityEditingField(Rect propertyFieldRect, Event currentEvent)
+        private static bool IsUnityEditingField(Event currentEvent)
         {
             // More conservative check - only skip during text input events when there's a focused control
             if (currentEvent.type == EventType.KeyDown || currentEvent.type == EventType.KeyUp)
             {
                 bool isEditing = GUIUtility.keyboardControl != 0;
-                if (isEditing)
-                {
-                    Debug.Log($"[ReorderableList] Unity editing field (keyboard event). Control ID: {GUIUtility.keyboardControl}");
-                }
                 return isEditing;
             }
 
             // Don't skip mouse events - let them through for focus/selection
             return false;
-        }
-
-        /// <summary>
-        /// Determines if we should allow property field to handle drag for value changes
-        /// </summary>
-        private static bool ShouldHandleNumberDrag(SerializedProperty element)
-        {
-            // Check if this property type supports value dragging
-            return element.propertyType switch
-            {
-                SerializedPropertyType.Float => true,
-                SerializedPropertyType.Integer => true,
-                SerializedPropertyType.Vector2 => true,
-                SerializedPropertyType.Vector3 => true,
-                SerializedPropertyType.Vector4 => true,
-                SerializedPropertyType.Vector2Int => true,
-                SerializedPropertyType.Vector3Int => true,
-                SerializedPropertyType.Quaternion => true,
-                SerializedPropertyType.Rect => true,
-                SerializedPropertyType.RectInt => true,
-                SerializedPropertyType.Bounds => true,
-                SerializedPropertyType.BoundsInt => true,
-                _ => false
-            };
-        }
-
-        private static void HandleNumberDrag(Rect propertyRect, SerializedProperty element)
-        {
-            Event currentEvent = Event.current;
-            int controlID = GUIUtility.GetControlID(FocusType.Passive);
-
-            switch (currentEvent.type)
-            {
-                case EventType.MouseDown:
-                    if (propertyRect.Contains(currentEvent.mousePosition) && currentEvent.button == 0)
-                    {
-                        GUIUtility.hotControl = controlID;
-                        _lastMouseDownPosition = currentEvent.mousePosition;
-                        currentEvent.Use();
-                    }
-                    break;
-
-                case EventType.MouseDrag:
-                    if (GUIUtility.hotControl == controlID)
-                    {
-                        float deltaX = currentEvent.mousePosition.x - _lastMouseDownPosition.x;
-                        ApplyDragDelta(element, deltaX);
-                        _lastMouseDownPosition = currentEvent.mousePosition;
-                        GUI.changed = true;
-                        currentEvent.Use();
-                    }
-                    break;
-
-                case EventType.MouseUp:
-                    if (GUIUtility.hotControl == controlID)
-                    {
-                        GUIUtility.hotControl = 0;
-                        currentEvent.Use();
-                    }
-                    break;
-            }
-        }
-
-        private static void ApplyDragDelta(SerializedProperty element, float deltaX)
-        {
-            float sensitivity = Event.current.shift ? 0.1f : 1f; // Shift = fine control
-            float delta = deltaX * sensitivity;
-
-            switch (element.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    element.intValue = Mathf.RoundToInt(element.intValue + delta);
-                    break;
-
-                case SerializedPropertyType.Float:
-                    element.floatValue += delta * 0.1f; // Scale for float precision
-                    break;
-
-                case SerializedPropertyType.Vector2:
-                    var v2 = element.vector2Value;
-                    v2.x += delta * 0.1f;
-                    element.vector2Value = v2;
-                    break;
-
-                case SerializedPropertyType.Vector3:
-                    var v3 = element.vector3Value;
-                    v3.x += delta * 0.1f; // Drag affects X component
-                    element.vector3Value = v3;
-                    break;
-            }
-
-            element.serializedObject.ApplyModifiedProperties();
         }
 
         private static void DrawReorderIcon(Rect elementRect, Event currentEvent)
@@ -702,7 +567,7 @@ namespace NaughtyAttributes.Editor
             // Draw three horizontal lines to simulate reorder handle
             for (int i = 0; i < 3; i++)
             {
-                Rect lineRect = new Rect(reorderIconRect.x + 1, reorderIconRect.y + 2 + i * 3, 10, 1);
+                Rect lineRect = new Rect(reorderIconRect.x + 1, reorderIconRect.y + i * 3, 10, 1);
                 EditorGUI.DrawRect(lineRect, reorderIconColor);
             }
         }
@@ -715,9 +580,9 @@ namespace NaughtyAttributes.Editor
 
             // Calculate property field rect with proper padding
             Rect propertyRect = new Rect(
-                elementRect.x + 22.0f + indent, // Space for reorder icon
-                elementRect.y + 1.0f,
-                elementRect.width - 44.0f - indent, // Account for both icon and delete button
+                elementRect.x + 30.0f + indent, // Space for reorder icon
+                elementRect.y,
+                elementRect.width - INDENT_WIDTH * 3 - 2,
                 EditorGUIUtility.singleLineHeight
             );
 
@@ -1080,7 +945,6 @@ namespace NaughtyAttributes.Editor
                     return 0f;
             }
         }
-
         #endregion
 
         #region Array Utility Methods (Continued)
