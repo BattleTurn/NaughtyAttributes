@@ -51,7 +51,7 @@ namespace NaughtyAttributes.Editor
             // >>> Arrays/Lists (except string): draw with our ReorderableList helper
             if (property.isArray && property.propertyType != SerializedPropertyType.String)
             {
-                ReorderableEditorGUI.CreateReorderableList(default, property);
+                ReorderableEditorController.CreateReorderableList(default, property);
                 return;
             }
 
@@ -594,7 +594,7 @@ namespace NaughtyAttributes.Editor
                     // Draw property, include children if it has them
                     if (child.isArray && child.propertyType != SerializedPropertyType.String)
                     {
-                        ReorderableEditorGUI.CreateReorderableList(default, child);
+                        ReorderableEditorController.CreateReorderableList(default, child);
                         continue;
                     }
 

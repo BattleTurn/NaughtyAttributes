@@ -316,7 +316,12 @@ namespace NaughtyAttributes.Editor
             Event currentEvent = Event.current;
 
             // Draw alternating background colors for better visibility
-            DrawElementBackground(selectedIndices, key, index, currentEvent);
+            if (currentEvent.type == EventType.Repaint)
+            {
+                Color backgroundColor = GetAlternatingBackgroundColor(index);
+                
+                EditorGUI.DrawRect(r, backgroundColor);
+            }
 
             // Draw delete button (X) on the right side
             Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
@@ -416,8 +421,6 @@ namespace NaughtyAttributes.Editor
 
         private static void DrawSelectionFrame(Dictionary<ListKey, HashSet<int>> selectedIndices, Rect fullBackgroundRect, ListKey key, int index)
         {
-            Color originalBackgroundColor = GUI.backgroundColor;
-
             // Check if this element is selected
             if (selectedIndices.ContainsKey(key) && selectedIndices[key].Contains(index))
             {
@@ -432,7 +435,6 @@ namespace NaughtyAttributes.Editor
             }
 
             GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
-            GUI.backgroundColor = originalBackgroundColor;
         }
 
         private static Rect DrawSelectionIndex(Dictionary<ListKey, HashSet<int>> selectedIndices, ListKey key, Rect r, int index)
