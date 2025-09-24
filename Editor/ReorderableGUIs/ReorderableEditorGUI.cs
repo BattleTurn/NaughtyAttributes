@@ -316,26 +316,7 @@ namespace NaughtyAttributes.Editor
             Event currentEvent = Event.current;
 
             // Draw alternating background colors for better visibility
-            if (currentEvent.type == EventType.Repaint)
-            {
-                Color backgroundColor;
-                if (index % 2 == 0)
-                {
-                    // Even rows - slightly darker
-                    backgroundColor = EditorGUIUtility.isProSkin
-                        ? new Color(0.25f, 0.25f, 0.25f, 1f)
-                        : new Color(0.92f, 0.92f, 0.92f, 1f);
-                }
-                else
-                {
-                    // Odd rows - darker
-                    backgroundColor = EditorGUIUtility.isProSkin
-                        ? new Color(0.22f, 0.22f, 0.22f, 1f)
-                        : new Color(0.88f, 0.88f, 0.88f, 1f);
-                }
-
-                EditorGUI.DrawRect(r, backgroundColor);
-            }
+            DrawElementBackground(selectedIndices, key, index, currentEvent);
 
             // Draw delete button (X) on the right side
             Rect deleteButtonRect = new Rect(r.xMax - 20, r.y - 3, 10, r.height);
@@ -401,6 +382,57 @@ namespace NaughtyAttributes.Editor
             r.width -= 10.0f + indent;
 
             EditorGUI.PropertyField(new Rect(r.x, r.y, r.width, EditorGUIUtility.singleLineHeight), element, true);
+        }
+
+        private static void DrawElementBackground(Dictionary<ListKey, HashSet<int>> selectedIndices, Rect fullBackgroundRect, ListKey key, int index, Event currentEvent)
+        {
+            if (currentEvent.type != EventType.Repaint) return;
+
+            // Draw alternating background
+            Color backgroundColor = GetAlternatingBackgroundColor(index);
+            EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
+
+            // Draw selection frame
+            DrawSelectionFrame(selectedIndices, fullBackgroundRect, key, index);
+        }
+
+        private static Color GetAlternatingBackgroundColor(int index)
+        {
+            if (index % 2 == 0)
+            {
+                // Even rows - lighter
+                return EditorGUIUtility.isProSkin
+                    ? new Color(0.25f, 0.25f, 0.25f, 1f)
+                    : new Color(0.92f, 0.92f, 0.92f, 1f);
+            }
+            else
+            {
+                // Odd rows - darker
+                return EditorGUIUtility.isProSkin
+                    ? new Color(0.20f, 0.20f, 0.20f, 1f)
+                    : new Color(0.88f, 0.88f, 0.88f, 1f);
+            }
+        }
+
+        private static void DrawSelectionFrame(Dictionary<ListKey, HashSet<int>> selectedIndices, Rect fullBackgroundRect, ListKey key, int index)
+        {
+            Color originalBackgroundColor = GUI.backgroundColor;
+
+            // Check if this element is selected
+            if (selectedIndices.ContainsKey(key) && selectedIndices[key].Contains(index))
+            {
+                bool isSmartSelection = ReorderableEditorController.IsSmartSelection(key, index);
+                GUI.backgroundColor = isSmartSelection
+                    ? new Color(0.2f, 0.9f, 0.4f, 1f)  // Smart selection - green
+                    : new Color(0.4f, 0.6f, 1f, 1f);   // Manual selection - blue
+            }
+            else
+            {
+                GUI.backgroundColor = Color.white; // Normal
+            }
+
+            GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
+            GUI.backgroundColor = originalBackgroundColor;
         }
 
         private static Rect DrawSelectionIndex(Dictionary<ListKey, HashSet<int>> selectedIndices, ListKey key, Rect r, int index)
