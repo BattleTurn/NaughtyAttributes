@@ -16,6 +16,7 @@ namespace NaughtyAttributes.Editor
     /// </summary>
     public static class ReorderableEditorGUI
     {
+        private readonly static float reorderIconColorMultiplier = 1.2f;
         #region Fields & Constants
 
         internal static readonly Dictionary<ListKey, ReorderableList> arrayLists = new();
@@ -59,8 +60,8 @@ namespace NaughtyAttributes.Editor
             var listRect = CalculateListRect(rect, arrayProp, reorderableList);
 
             // Handle drag & drop BEFORE rendering to take event priority
-            var dropRect = CalculateExpandedDropRect(listRect, arrayProp);
-            HandleDragAndDrop(arrayProp, dropRect);
+            // var dropRect = CalculateExpandedDropRect(listRect, arrayProp);
+            // HandleDragAndDrop(arrayProp, dropRect);
 
             reorderableList.DoList(listRect);
         }
@@ -448,29 +449,26 @@ namespace NaughtyAttributes.Editor
             if (currentEvent.type != EventType.Repaint) return;
 
             // Draw alternating background
-            Color backgroundColor = GetAlternatingBackgroundColor(index);
+            Color backgroundColor = NaughtyGUIConfiguration.Instance.GetElementColor(index);
             EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
+            DrawOutline(fullBackgroundRect, 1f, new Color(0f, 0f, 0f, 0.2f));
 
             // Draw selection frame
-            DrawSmartSelection(fullBackgroundRect, key, index);
+            // DrawSmartSelection(fullBackgroundRect, key, index);
             // DrawSelectionFrame(fullBackgroundRect, key, index);
         }
 
-        private static Color GetAlternatingBackgroundColor(int index)
+        private static void DrawOutline(Rect rect, float size, Color color)
         {
-            if (index % 2 == 0)
+            if (Event.current.type == EventType.Repaint)
             {
-                // Even rows - lighter
-                return EditorGUIUtility.isProSkin
-                    ? new Color(0.25f, 0.25f, 0.25f, 1f)
-                    : new Color(0.92f, 0.92f, 0.92f, 1f);
-            }
-            else
-            {
-                // Odd rows - darker
-                return EditorGUIUtility.isProSkin
-                    ? new Color(0.20f, 0.20f, 0.20f, 1f)
-                    : new Color(0.88f, 0.88f, 0.88f, 1f);
+                Color color2 = GUI.color;
+                GUI.color *= color;
+                GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, size), EditorGUIUtility.whiteTexture);
+                GUI.DrawTexture(new Rect(rect.x, rect.yMax - size, rect.width, size), EditorGUIUtility.whiteTexture);
+                GUI.DrawTexture(new Rect(rect.x, rect.y + 1f, size, rect.height - 2f * size), EditorGUIUtility.whiteTexture);
+                GUI.DrawTexture(new Rect(rect.xMax - size, rect.y + 1f, size, rect.height - 2f * size), EditorGUIUtility.whiteTexture);
+                GUI.color = color2;
             }
         }
 
@@ -479,10 +477,10 @@ namespace NaughtyAttributes.Editor
             if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
             {
                 Color selectionColor;
-                
+
                 // Check if this is a smart selection (adjacent elements) vs manual selection
                 bool isSmartSelection = IsSmartSelection(key, index);
-                
+
                 if (isSmartSelection)
                 {
                     // Smart selection - greenish color for grouped elements
@@ -493,14 +491,14 @@ namespace NaughtyAttributes.Editor
                     // Manual selection - blue color
                     selectionColor = new Color(0.3f, 0.5f, 1f, 0.4f);
                 }
-                
+
                 if (ReorderableEditorGUIController.SelectedIndices[key].Count == 1)
                     selectionColor.a = 0.3f; // Single selection - lighter
                 else
                     selectionColor.a = 0.5f; // Multi selection - more prominent
-                    
+
                 EditorGUI.DrawRect(r, selectionColor);
-                
+
                 // Add a small indicator for smart selection
                 if (isSmartSelection && ReorderableEditorGUIController.SelectedIndices[key].Count > 1)
                 {
@@ -736,10 +734,7 @@ namespace NaughtyAttributes.Editor
             if (currentEvent.type != EventType.Repaint) return;
 
             Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
-            Color reorderIconColor = EditorGUIUtility.isProSkin
-                ? new Color(0.6f, 0.6f, 0.6f)
-                : new Color(0.4f, 0.4f, 0.4f);
-
+            Color reorderIconColor = NaughtyGUIConfiguration.Instance.GetReorderIconColor();
             // Draw three horizontal lines to simulate reorder handle
             for (int i = 0; i < 3; i++)
             {

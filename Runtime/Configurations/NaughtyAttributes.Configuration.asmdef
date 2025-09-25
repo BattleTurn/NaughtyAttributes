@@ -1,13 +1,8 @@
 {
-    "name": "NaughtyAttributes.Editor",
+    "name": "NaughtyAttributes.Configuration",
     "rootNamespace": "",
-    "references": [
-        "NaughtyAttributes.Core",
-        "NaughtyAttributes.Configuration"
-    ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "references": [],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

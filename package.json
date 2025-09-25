@@ -17,5 +17,6 @@
   "author": {
     "name": "Denis Rizov",
     "url": "https://github.com/dbrizov"
-  }
+  },
+  "hideInEditor": false
 }
