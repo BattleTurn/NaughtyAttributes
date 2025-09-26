@@ -415,35 +415,6 @@ namespace NaughtyAttributes.Editor
             HandleElementInteractions(key, index, r, currentEvent, arrayProp);
         }
 
-        /// <summary>
-        /// Simplified element drawing for property editing - no interactions
-        /// </summary>
-        private static void DrawElementForPropertyEditing(SerializedProperty arrayProp, ListKey key, Rect r, int index)
-        {
-            if (!arrayProp.isExpanded) return;
-
-            Event currentEvent = Event.current;
-
-            // Calculate rects first
-            Rect fullBackgroundRect = new Rect(r.x - 19, r.y - 2, r.width + 24, r.height);
-            Rect elementRect = new Rect(r.x - 19, r.y, r.width + 22, r.height);
-
-            // Draw visual elements
-            DrawElementBackground(fullBackgroundRect, key, index, currentEvent);
-
-            // Handle delete button
-            if (DrawDeleteButton(r, arrayProp, index)) return;
-
-            // Adjust drawing area
-            r.width -= 25;
-
-            // ONLY draw visual elements - no interaction handling
-            DrawReorderIcon(elementRect, currentEvent);
-            DrawPropertyField(elementRect, arrayProp, index);
-
-            // NO custom interaction handling - let Unity handle everything
-        }
-
         private static void DrawElementBackground(Rect fullBackgroundRect, ListKey key, int index, Event currentEvent)
         {
             if (currentEvent.type != EventType.Repaint) return;
@@ -451,87 +422,7 @@ namespace NaughtyAttributes.Editor
             // Draw alternating background
             Color backgroundColor = NaughtyGUIConfiguration.Instance.GetElementColor(index);
             EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
-            DrawOutline(fullBackgroundRect, 1f, new Color(0f, 0f, 0f, 0.2f));
-
-            // Draw selection frame
-            // DrawSmartSelection(fullBackgroundRect, key, index);
-            // DrawSelectionFrame(fullBackgroundRect, key, index);
-        }
-
-        private static void DrawOutline(Rect rect, float size, Color color)
-        {
-            if (Event.current.type == EventType.Repaint)
-            {
-                Color color2 = GUI.color;
-                GUI.color *= color;
-                GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, size), EditorGUIUtility.whiteTexture);
-                GUI.DrawTexture(new Rect(rect.x, rect.yMax - size, rect.width, size), EditorGUIUtility.whiteTexture);
-                GUI.DrawTexture(new Rect(rect.x, rect.y + 1f, size, rect.height - 2f * size), EditorGUIUtility.whiteTexture);
-                GUI.DrawTexture(new Rect(rect.xMax - size, rect.y + 1f, size, rect.height - 2f * size), EditorGUIUtility.whiteTexture);
-                GUI.color = color2;
-            }
-        }
-
-        private static void DrawSmartSelection(Rect r, ListKey key, int index)
-        {
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) && ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
-            {
-                Color selectionColor;
-
-                // Check if this is a smart selection (adjacent elements) vs manual selection
-                bool isSmartSelection = IsSmartSelection(key, index);
-
-                if (isSmartSelection)
-                {
-                    // Smart selection - greenish color for grouped elements
-                    selectionColor = new Color(0.2f, 0.8f, 0.4f, 0.4f);
-                }
-                else
-                {
-                    // Manual selection - blue color
-                    selectionColor = new Color(0.3f, 0.5f, 1f, 0.4f);
-                }
-
-                if (ReorderableEditorGUIController.SelectedIndices[key].Count == 1)
-                    selectionColor.a = 0.3f; // Single selection - lighter
-                else
-                    selectionColor.a = 0.5f; // Multi selection - more prominent
-
-                EditorGUI.DrawRect(r, selectionColor);
-
-                // Add a small indicator for smart selection
-                if (isSmartSelection && ReorderableEditorGUIController.SelectedIndices[key].Count > 1)
-                {
-                    var indicatorRect = new Rect(r.x + r.width - 15, r.y + 2, 12, 12);
-                    EditorGUI.DrawRect(indicatorRect, new Color(0.1f, 0.6f, 0.2f, 0.8f));
-                    var style = new GUIStyle(EditorStyles.miniLabel);
-                    style.normal.textColor = Color.white;
-                    style.fontSize = 8;
-                    style.alignment = TextAnchor.MiddleCenter;
-                    GUI.Label(indicatorRect, "●", style);
-                }
-            }
-        }
-
-        private static void DrawSelectionFrame(Rect fullBackgroundRect, ListKey key, int index)
-        {
-            Color originalBackgroundColor = GUI.backgroundColor;
-
-            // Check if this element is selected
-            if (ReorderableEditorGUIController.SelectedIndices.ContainsKey(key) &&
-                ReorderableEditorGUIController.SelectedIndices[key].Contains(index))
-            {
-                bool isSmartSelection = IsSmartSelection(key, index);
-                GUI.backgroundColor = isSmartSelection
-                    ? new Color(0.2f, 0.9f, 0.4f, 1f)  // Smart selection - green
-                    : new Color(0.4f, 0.6f, 1f, 1f);   // Manual selection - blue
-            }
-            else
-            {
-                GUI.backgroundColor = Color.white; // Normal
-            }
-            GUI.Box(fullBackgroundRect, "", EditorStyles.helpBox);
-            GUI.backgroundColor = originalBackgroundColor;
+            fullBackgroundRect.DrawOutline(NaughtyGUIConfiguration.Instance.GetOutlineColor(index), 1f);
         }
 
         private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
@@ -733,7 +624,7 @@ namespace NaughtyAttributes.Editor
         {
             if (currentEvent.type != EventType.Repaint) return;
 
-            Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 12) / 2, 12, 12);
+            Rect reorderIconRect = new Rect(elementRect.x + 6, elementRect.y + (elementRect.height - 15) / 2, 12, 12);
             Color reorderIconColor = NaughtyGUIConfiguration.Instance.GetReorderIconColor();
             // Draw three horizontal lines to simulate reorder handle
             for (int i = 0; i < 3; i++)
@@ -751,7 +642,7 @@ namespace NaughtyAttributes.Editor
 
             // Calculate property field rect with proper padding
             Rect propertyRect = new Rect(
-                elementRect.x + 22.0f + indent, // Space for reorder icon
+                elementRect.x + 30.0f + indent, // Space for reorder icon
                 elementRect.y + 1.0f,
                 elementRect.width - 44.0f - indent, // Account for both icon and delete button
                 EditorGUIUtility.singleLineHeight

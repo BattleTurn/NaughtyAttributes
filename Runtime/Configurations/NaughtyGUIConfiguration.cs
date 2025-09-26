@@ -19,15 +19,10 @@ namespace NaughtyAttributes
         private Color _reorderLightColor = new Color(0.6f, 0.6f, 0.6f);
         [SerializeField]
         private Color _reorderDarkColor = new Color(0.4f, 0.4f, 0.4f);
+
         [Header("Element Settings")]
         [SerializeField]
-        private Color _evenLightColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-        [SerializeField]
-        private Color _evenDarkColor = new Color(0.25f, 0.25f, 0.25f, 1f);
-        [SerializeField]
-        private Color _oddLightColor = new Color(0.88f, 0.88f, 0.88f, 1f);
-        [SerializeField]
-        private Color _oddDarkColor = new Color(0.20f, 0.20f, 0.20f, 1f);
+        private ElementColorData _elementColors = new ElementColorData();
 
         public static NaughtyGUIConfiguration Instance
         {
@@ -81,9 +76,12 @@ namespace NaughtyAttributes
 
         public Color GetElementColor(int index)
         {
-            if (index % 2 == 0)
-                return EditorGUIUtility.isProSkin ? _evenDarkColor : _evenLightColor;
-            return EditorGUIUtility.isProSkin ? _oddDarkColor : _oddLightColor;
+            return _elementColors.GetElementColor(index);
+        }
+        
+        public Color GetOutlineColor(int index)
+        {
+            return _elementColors.GetOutlineColor(index);
         }
         #endregion
     }
