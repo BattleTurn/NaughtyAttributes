@@ -1,6 +1,8 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 
+[Serializable]
 public sealed class ElementColorData
 {
     [SerializeField]
