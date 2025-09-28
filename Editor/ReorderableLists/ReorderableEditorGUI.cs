@@ -538,16 +538,6 @@ namespace NaughtyAttributes.Editor
             {
                 SerializedPropertyType.Float => true,
                 SerializedPropertyType.Integer => true,
-                SerializedPropertyType.Vector2 => true,
-                SerializedPropertyType.Vector3 => true,
-                SerializedPropertyType.Vector4 => true,
-                SerializedPropertyType.Vector2Int => true,
-                SerializedPropertyType.Vector3Int => true,
-                SerializedPropertyType.Quaternion => true,
-                SerializedPropertyType.Rect => true,
-                SerializedPropertyType.RectInt => true,
-                SerializedPropertyType.Bounds => true,
-                SerializedPropertyType.BoundsInt => true,
                 _ => false
             };
         }
@@ -562,6 +552,10 @@ namespace NaughtyAttributes.Editor
                 case EventType.MouseDown:
                     if (propertyRect.Contains(currentEvent.mousePosition) && currentEvent.button == 0)
                     {
+                        if (GUIUtility.keyboardControl != 0)
+                        {
+                            GUIUtility.keyboardControl = 0;
+                        }
                         GUIUtility.hotControl = controlID;
                         _lastMouseDownPosition = currentEvent.mousePosition;
                         currentEvent.Use();
@@ -640,16 +634,58 @@ namespace NaughtyAttributes.Editor
             int indentLevel = EditorGUI.indentLevel;
             float indent = indentLevel * INDENT_WIDTH;
 
-            // Calculate property field rect with proper padding
-            Rect propertyRect = new Rect(
-                elementRect.x + 30.0f + indent, // Space for reorder icon
+            float labelWidth = EditorGUIUtility.labelWidth;
+            float valueWidth = elementRect.width - 44.0f - indent - (labelWidth - 30.0f);
+            Rect labelRect = new Rect(
+                elementRect.x + 30.0f + indent,
                 elementRect.y + 1.0f,
-                elementRect.width - 44.0f - indent, // Account for both icon and delete button
+                labelWidth - 30.0f,
+                EditorGUIUtility.singleLineHeight
+            );
+            
+            Rect dragRect = new Rect(
+                elementRect.x + 30.0f + indent + (labelWidth - 30.0f),
+                elementRect.y + 1.0f,
+                18.0f,
+                EditorGUIUtility.singleLineHeight
+            );
+            Rect valueRect = new Rect(
+                dragRect.xMax,
+                elementRect.y + 1.0f,
+                valueWidth - 18.0f,
                 EditorGUIUtility.singleLineHeight
             );
 
-            // Try the simplest possible property field approach
-            EditorGUI.PropertyField(propertyRect, element, true);
+            EditorGUI.DrawRect(valueRect, new Color(1.000f, 0.247f, 0.247f, 0.000f)); // Invisible rect to capture events
+
+            bool hasCustomDrawer = PropertyHasCustomDrawer(element);
+
+            if (!hasCustomDrawer)
+            {
+                EditorGUI.LabelField(labelRect, element.displayName);
+                EditorGUI.PropertyField(valueRect, element, GUIContent.none, true);
+            }
+            else
+            {
+                EditorGUI.PropertyField(new Rect(labelRect.x, labelRect.y, valueRect.xMax - labelRect.x, labelRect.height), element, true);
+            }
+
+            if (ShouldHandleNumberDrag(element))
+            {
+                EditorGUI.DrawRect(dragRect, new Color(1.0f, 1.0f, 0.5f, 0.5f));
+                // Đổi cursor khi hover vào dragRect
+                if (dragRect.Contains(Event.current.mousePosition))
+                {
+                    EditorGUIUtility.AddCursorRect(dragRect, MouseCursor.SlideArrow);
+                }
+                HandleNumberDrag(dragRect, element);
+            }
+        }
+
+        private static bool PropertyHasCustomDrawer(SerializedProperty prop)
+        {
+            return prop.GetSerializedFieldAttribute<ShowAssetPreviewAttribute>() != null ||
+                prop.GetSerializedFieldAttribute<ExpandableAttribute>() != null;
         }
 
         private static float GetElementHeight(SerializedProperty arrayProp, int index)

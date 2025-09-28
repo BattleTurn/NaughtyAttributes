@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 
@@ -6,6 +7,41 @@ namespace NaughtyAttributes.Editor
 {
     public static class SerializedPropertyExtensions
     {
+        /// <summary>
+        /// Lấy FieldInfo của field gốc (serialize field) chứa property này.
+        /// </summary>
+        public static FieldInfo GetSerializedFieldInfo(this SerializedProperty property)
+        {
+            if (property == null) return null;
+
+            var path = property.propertyPath;
+            var type = property.serializedObject.targetObject.GetType();
+
+            // Lấy phần đầu tiên trước dấu chấm hoặc trước ".Array"
+            string fieldName = path.Split('.')[0];
+            FieldInfo fieldInfo = null;
+
+            // Tìm field ở type hiện tại hoặc base type
+            while (type != null)
+            {
+                fieldInfo = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (fieldInfo != null) break;
+                type = type.BaseType;
+            }
+
+            return fieldInfo;
+        }
+
+        /// <summary>
+        /// Lấy attribute của field serialize gốc (nếu có).
+        /// </summary>
+        public static T GetSerializedFieldAttribute<T>(this SerializedProperty property) where T : Attribute
+        {
+            var fieldInfo = property.GetSerializedFieldInfo();
+            if (fieldInfo == null) return null;
+            return Attribute.GetCustomAttribute(fieldInfo, typeof(T)) as T;
+        }
+
         public static Type GetElementType(this SerializedProperty property)
         {
             if (!property.isArray) return null;
@@ -13,9 +49,9 @@ namespace NaughtyAttributes.Editor
             try
             {
                 // Method 1: Try reflection approach (Unity 2020+)
-                var getFieldInfoMethod = typeof(SerializedProperty).GetMethod("GetFieldInfoAndStaticType", 
+                var getFieldInfoMethod = typeof(SerializedProperty).GetMethod("GetFieldInfoAndStaticType",
                     BindingFlags.NonPublic | BindingFlags.Instance);
-                
+
                 if (getFieldInfoMethod != null)
                 {
                     object[] args = new object[] { null, null };
@@ -41,19 +77,19 @@ namespace NaughtyAttributes.Editor
                 {
                     var targetObject = property.serializedObject.targetObject;
                     var propertyPath = property.propertyPath;
-                    
+
                     if (targetObject != null && !string.IsNullOrEmpty(propertyPath))
                     {
                         var fieldInfo = targetObject.GetType().GetField(propertyPath, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                         if (fieldInfo != null)
                         {
                             var fieldType = fieldInfo.FieldType;
-                            
+
                             if (fieldType.IsArray)
                             {
                                 return fieldType.GetElementType();
                             }
-                            
+
                             if (fieldType.IsGenericType && fieldType.GetGenericArguments().Length > 0)
                             {
                                 return fieldType.GetGenericArguments()[0];
@@ -76,7 +112,7 @@ namespace NaughtyAttributes.Editor
                         var objRefType = GetObjectReferenceType(firstElement);
                         if (objRefType != null)
                             return objRefType;
-                            
+
                         // Last resort: get type from existing object (may be too specific!)
                         if (firstElement.objectReferenceValue != null)
                         {
@@ -86,7 +122,7 @@ namespace NaughtyAttributes.Editor
                 }
 
                 // Method 4: Final fallback - return UnityEngine.Object for object references
-                if (property.arraySize == 0 || (property.arraySize > 0 && 
+                if (property.arraySize == 0 || (property.arraySize > 0 &&
                     property.GetArrayElementAtIndex(0).propertyType == SerializedPropertyType.ObjectReference))
                 {
                     return typeof(UnityEngine.Object);
