@@ -421,8 +421,8 @@ namespace NaughtyAttributes.Editor
 
             // Draw alternating background
             Color backgroundColor = NaughtyGUIConfiguration.Instance.GetElementColor(index);
-            EditorGUI.DrawRect(fullBackgroundRect, backgroundColor);
-            fullBackgroundRect.DrawOutline(NaughtyGUIConfiguration.Instance.GetOutlineColor(index), 1f);
+            NaughtyGUI.DrawRoundedRect(fullBackgroundRect, backgroundColor, 2);
+            NaughtyGUI.DrawRoundedRectOutline(fullBackgroundRect, NaughtyGUIConfiguration.Instance.GetOutlineColor(index), 2, 1);
         }
 
         private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
@@ -642,7 +642,7 @@ namespace NaughtyAttributes.Editor
                 labelWidth - 30.0f,
                 EditorGUIUtility.singleLineHeight
             );
-            
+
             Rect dragRect = new Rect(
                 elementRect.x + 30.0f + indent + (labelWidth - 30.0f),
                 elementRect.y + 1.0f,
@@ -655,8 +655,6 @@ namespace NaughtyAttributes.Editor
                 valueWidth - 18.0f,
                 EditorGUIUtility.singleLineHeight
             );
-
-            EditorGUI.DrawRect(valueRect, new Color(1.000f, 0.247f, 0.247f, 0.000f)); // Invisible rect to capture events
 
             bool hasCustomDrawer = PropertyHasCustomDrawer(element);
 
@@ -672,7 +670,6 @@ namespace NaughtyAttributes.Editor
 
             if (ShouldHandleNumberDrag(element))
             {
-                EditorGUI.DrawRect(dragRect, new Color(1.0f, 1.0f, 0.5f, 0.5f));
                 // Đổi cursor khi hover vào dragRect
                 if (dragRect.Contains(Event.current.mousePosition))
                 {
