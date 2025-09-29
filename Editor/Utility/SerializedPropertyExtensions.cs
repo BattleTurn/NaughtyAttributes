@@ -32,14 +32,16 @@ namespace NaughtyAttributes.Editor
             return fieldInfo;
         }
 
-        /// <summary>
-        /// Lấy attribute của field serialize gốc (nếu có).
-        /// </summary>
         public static T GetSerializedFieldAttribute<T>(this SerializedProperty property) where T : Attribute
         {
             var fieldInfo = property.GetSerializedFieldInfo();
             if (fieldInfo == null) return null;
             return Attribute.GetCustomAttribute(fieldInfo, typeof(T)) as T;
+        }
+
+        public static bool IsNestedProperty(this SerializedProperty arrayProp)
+        {
+            return arrayProp.propertyPath.Contains('.');
         }
 
         public static Type GetElementType(this SerializedProperty property)

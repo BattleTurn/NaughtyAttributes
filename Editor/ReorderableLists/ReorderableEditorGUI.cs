@@ -28,7 +28,7 @@ namespace NaughtyAttributes.Editor
         private static bool _isPropertyDragCandidate = false;
         private static readonly float DRAG_THRESHOLD = 3f; // pixels
 
-        private const float INDENT_WIDTH = 15.0f;
+        private const float INDENT_WIDTH = 13.0f;
 
         #endregion
 
@@ -156,6 +156,9 @@ namespace NaughtyAttributes.Editor
             {
                 var reorderableList = CreateNewReorderableList(arrayProp, key);
                 arrayLists[key] = reorderableList;
+                reorderableList.footerHeight = 0f;
+                reorderableList.displayAdd = false;
+                reorderableList.displayRemove = false;
 
                 if (!ReorderableEditorGUIController.SelectedIndices.ContainsKey(key))
                 {
@@ -255,7 +258,7 @@ namespace NaughtyAttributes.Editor
                 Rect rr = rect;
                 rr.height = arrayProp.isExpanded
                     ? reorderableList.GetHeight()
-                    : EditorGUIUtility.singleLineHeight + 4f;
+                    : EditorGUIUtility.singleLineHeight;
                 return rr;
             }
         }
@@ -316,7 +319,7 @@ namespace NaughtyAttributes.Editor
 
             float buttonSize = headerRect.height + 2;
             Rect addButtonRect = new Rect(
-                headerRect.width + buttonSize / 2,
+                headerRect.xMax - buttonSize - buttonSize / 2 + 3,
                 headerRect.y - 1,
                 buttonSize,
                 buttonSize
@@ -361,7 +364,7 @@ namespace NaughtyAttributes.Editor
             headerRect.x += INDENT_WIDTH;
 
             // Adjust for nested properties
-            if (arrayProp.propertyPath.Contains('.'))
+            if (arrayProp.IsNestedProperty())
             {
                 string[] pathParts = arrayProp.propertyPath.Split('.');
                 float indent = EditorGUI.indentLevel * INDENT_WIDTH + INDENT_WIDTH * (pathParts.Length - 1);
@@ -434,8 +437,8 @@ namespace NaughtyAttributes.Editor
 
             // Draw alternating background
             Color backgroundColor = NaughtyGUIConfiguration.Instance.GetElementColor(index);
-            NaughtyGUI.DrawRoundedRect(fullBackgroundRect, backgroundColor, 2);
-            NaughtyGUI.DrawRoundedRectOutline(fullBackgroundRect, NaughtyGUIConfiguration.Instance.GetOutlineColor(index), 2, 1);
+            NaughtyGUI.DrawRectircle(fullBackgroundRect, backgroundColor, 2);
+            NaughtyGUI.DrawRectircleOutline(fullBackgroundRect, NaughtyGUIConfiguration.Instance.GetOutlineColor(index), 2, 1);
         }
 
         private static bool DrawDeleteButton(Rect r, SerializedProperty arrayProp, int index)
@@ -671,7 +674,7 @@ namespace NaughtyAttributes.Editor
 
             bool hasCustomDrawer = PropertyHasCustomDrawer(element);
 
-            if (!hasCustomDrawer)
+            if (!hasCustomDrawer && arrayProp.IsNestedProperty())
             {
                 EditorGUI.LabelField(labelRect, element.displayName);
                 EditorGUI.PropertyField(valueRect, element, GUIContent.none, true);

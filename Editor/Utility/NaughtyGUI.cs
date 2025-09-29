@@ -6,25 +6,115 @@ namespace NaughtyAttributes.Editor
 {
     public static class NaughtyGUI
     {
-        private static Dictionary<int, Texture2D> _roundCornerRect = new Dictionary<int, Texture2D>();
-        private static Dictionary<Vector2Int, Texture2D> _roundCornerRectOutline = new Dictionary<Vector2Int, Texture2D>();
-
-        public static void DrawRoundedRect(Rect position, Color color, int cornerRadius)
+        private struct RectircleOutline
         {
-            if (!_roundCornerRect.ContainsKey(cornerRadius))
+            public Rect rect;
+            public int cornerRadius;
+            public int outlineWidth;
+
+            public RectircleOutline(Rect rect, int cornerRadius, int outlineWidth)
             {
-                _roundCornerRect[cornerRadius] = MakeRoundedRectTexture((int)position.width, (int)position.height, cornerRadius, Color.white);
+                this.rect = rect;
+                this.cornerRadius = cornerRadius;
+                this.outlineWidth = outlineWidth;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (!(obj is RectircleOutline))
+                    return false;
+
+                RectircleOutline other = (RectircleOutline)obj;
+                return rect.Equals(other.rect) &&
+                       cornerRadius == other.cornerRadius &&
+                       outlineWidth == other.outlineWidth;
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + rect.GetHashCode();
+                    hash = hash * 23 + cornerRadius.GetHashCode();
+                    hash = hash * 23 + outlineWidth.GetHashCode();
+                    return hash;
+                }
+            }
+
+            public static bool operator ==(RectircleOutline lhs, RectircleOutline rhs)
+            {
+                return lhs.Equals(rhs);
+            }
+
+            public static bool operator !=(RectircleOutline lhs, RectircleOutline rhs)
+            {
+                return !lhs.Equals(rhs);
+            }
+        }
+
+        private struct Rectircle
+        {
+            public Rect rect;
+            public int cornerRadius;
+
+            public Rectircle(Rect rect, int cornerRadius)
+            {
+                this.rect = rect;
+                this.cornerRadius = cornerRadius;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (!(obj is Rectircle))
+                    return false;
+
+                Rectircle other = (Rectircle)obj;
+                return rect.Equals(other.rect) && cornerRadius == other.cornerRadius;
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + rect.GetHashCode();
+                    hash = hash * 23 + cornerRadius.GetHashCode();
+                    return hash;
+                }
+            }
+
+            public static bool operator ==(Rectircle lhs, Rectircle rhs)
+            {
+                return lhs.Equals(rhs);
+            }
+
+            public static bool operator !=(Rectircle lhs, Rectircle rhs)
+            {
+                return !lhs.Equals(rhs);
+            }
+        }
+
+        private static Dictionary<Rectircle, Texture2D> _roundCornerRect = new Dictionary<Rectircle, Texture2D>();
+        private static Dictionary<RectircleOutline, Texture2D> _roundCornerRectOutline = new Dictionary<RectircleOutline, Texture2D>();
+
+        public static void DrawRectircle(Rect position, Color color, int cornerRadius)
+        {
+            Rectircle key = new Rectircle(position, cornerRadius);
+            if (!_roundCornerRect.ContainsKey(key))
+            {
+                _roundCornerRect[key] = MakeRoundedRectTexture((int)position.width, (int)position.height, cornerRadius, Color.white);
             }
 
             Color temp = GUI.color;
             GUI.color *= color;
-            GUI.DrawTexture(position, _roundCornerRect[cornerRadius]);
+            GUI.DrawTexture(position, _roundCornerRect[key]);
             GUI.color = temp;
         }
 
-        public static void DrawRoundedRectOutline(Rect position, Color color, int cornerRadius, int outlineWidth)
+        public static void DrawRectircleOutline(Rect position, Color color, int cornerRadius, int outlineWidth)
         {
-            Vector2Int key = new Vector2Int(cornerRadius, outlineWidth);
+            RectircleOutline key = new RectircleOutline(position, cornerRadius, outlineWidth);
             if (!_roundCornerRectOutline.ContainsKey(key))
             {
                 _roundCornerRectOutline[key] = MakeRoundedRectOutlineTexture((int)position.width, (int)position.height, cornerRadius, outlineWidth, Color.white);
