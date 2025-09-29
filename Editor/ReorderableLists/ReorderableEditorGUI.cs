@@ -232,7 +232,7 @@ namespace NaughtyAttributes.Editor
 
             reorderableList.drawFooterCallback = (Rect fr) =>
             {
-                DrawFooter(arrayProp, fr, reorderableList);
+                // DrawFooter(arrayProp, fr, reorderableList);
             };
 
             return reorderableList;
@@ -313,6 +313,19 @@ namespace NaughtyAttributes.Editor
 
             // Draw foldout and handle expansion changes
             DrawFoldoutAndHandleExpansion(headerRect, arrayProp, headerContent);
+
+            float buttonSize = headerRect.height + 2;
+            Rect addButtonRect = new Rect(
+                headerRect.width + buttonSize / 2,
+                headerRect.y - 1,
+                buttonSize,
+                buttonSize
+            );
+            if (GUI.Button(addButtonRect, "+"))
+            {
+                arrayProp.arraySize++;
+                arrayProp.serializedObject.ApplyModifiedProperties();
+            }
         }
 
         private static GUIContent BuildHeaderContent(SerializedProperty arrayProp, ListKey key)
@@ -378,7 +391,7 @@ namespace NaughtyAttributes.Editor
             bool lastExpanded = arrayProp.isExpanded;
 
             // Draw the foldout
-            arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, headerContent, true);
+            arrayProp.isExpanded = EditorGUI.Foldout(headerRect, arrayProp.isExpanded, headerContent, false);
 
             // Handle expansion state changes
             if (lastExpanded != arrayProp.isExpanded)
