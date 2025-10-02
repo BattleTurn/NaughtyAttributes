@@ -1,0 +1,5 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <Style src="project://database/Assets/Scripts/CustomAttributes/Editor/AttributeDrawers/UI/Styles/ButtonField.uss?fileID=7433441132597879392&amp;guid=93d1e6af1fdade84ba60be8ba7653b0f&amp;type=3#ButtonField" />
+    <ui:Button name="button" style="min-width: 100px; min-height: 50px;" />
+    <ui:IMGUIContainer style="background-color: rgb(255, 255, 255); background-image: url(&quot;project://database/Assets/Plugins/3DModels/2009-mercedes-benz-slr-mclaren-722s-roadster/textures/McLaren_SLR722SRoadster_2009_BadgeA_MaterialOpacity.png?fileID=2800000&amp;guid=86124245a6139614f806a842e8a2d19a&amp;type=3#McLaren_SLR722SRoadster_2009_BadgeA_MaterialOpacity&quot;);" />
+</ui:UXML>

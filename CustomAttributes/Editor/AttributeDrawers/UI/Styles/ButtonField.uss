@@ -1,0 +1,18 @@
+#button {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    color: white;
+    transition: background-color 0.1s ease;
+}
+
+#button:hover {
+    background-color: rgb(56, 142, 60);
+    transition: scale 0.2s ease-out-back, background-color 0.1s ease;
+    background-image: url("project://database/Packages/com.dbrizov.naughtyattributes/Samples/DemoScene/TestAssets/icon-github.png?fileID=2800000&guid=005888ede18a58e4db8d069cfa3007cb&type=3#icon-github");
+}
+
+#button:active {
+    background-color: rgb(27, 94, 32);
+    scale: 0.95 0.95;
+    transition: scale 0.15s ease-in-out, background-color 0.1s ease;
+}

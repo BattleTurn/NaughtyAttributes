@@ -1,0 +1,4 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <Style src="project://database/Assets/Scripts/CustomAttributes/Editor/AttributeDrawers/UI/Styles/ReadOnlyField.uss?fileID=7433441132597879392&amp;guid=30bc3f14d4bc2624e95140ac0564e1eb&amp;type=3#ReadOnlyField" />
+    <uie:PropertyField name="property" />
+</ui:UXML>
