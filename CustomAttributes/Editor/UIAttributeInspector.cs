@@ -7,60 +7,63 @@ using UnityEngine.UIElements;
 using UnityEditor;
 using UnityEditor.UIElements;
 
-[CustomEditor(typeof(MonoBehaviour), true)]
-public class UIAttributeInspector : Editor
+namespace CustomAttributes.Editor
 {
-    private static Dictionary<Type, IUIPropertyDrawer> _drawers;
-
-    static UIAttributeInspector()
+    [CustomEditor(typeof(MonoBehaviour), true)]
+    public class UIAttributeInspector : UnityEditor.Editor
     {
-        _drawers = new Dictionary<Type, IUIPropertyDrawer>();
-        var drawerTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a => a.GetTypes())
-            .Where(t => typeof(IUIPropertyDrawer).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+        private static Dictionary<Type, IUIPropertyDrawer> _drawers;
 
-        foreach (var type in drawerTypes)
+        static UIAttributeInspector()
         {
-            var instance = (IUIPropertyDrawer)Activator.CreateInstance(type);
-            _drawers[instance.TargetAttribute] = instance;
-        }
-    }
+            _drawers = new Dictionary<Type, IUIPropertyDrawer>();
+            var drawerTypes = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => a.GetTypes())
+                .Where(t => typeof(IUIPropertyDrawer).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
 
-    public override VisualElement CreateInspectorGUI()
-    {
-        var root = new VisualElement();
-        var iterator = serializedObject.GetIterator();
-
-        if (iterator.NextVisible(true))
-        {
-            do
+            foreach (var type in drawerTypes)
             {
-                var fieldInfo = target.GetType().GetField(iterator.name,
-        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-
-                if (fieldInfo != null)
-                {
-                    var attr = fieldInfo.GetCustomAttributes(typeof(PropertyAttribute), true).FirstOrDefault() as PropertyAttribute;
-                    if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
-                    {
-                        drawer.Setup(fieldInfo);
-
-                        // tạo element mới cho từng field
-                        var element = new VisualElement();
-                        element = drawer.CreatePropertyGUI(iterator.Copy(), element);
-
-                        root.Add(element);
-                        continue;
-                    }
-                }
-
-                // Default UI
-                var defaultField = new PropertyField(iterator.Copy());
-                root.Add(defaultField);
-
-            } while (iterator.NextVisible(false));
+                var instance = (IUIPropertyDrawer)Activator.CreateInstance(type);
+                _drawers[instance.AttributeType] = instance;
+            }
         }
 
-        return root;
+        public override VisualElement CreateInspectorGUI()
+        {
+            var root = new VisualElement();
+            var iterator = serializedObject.GetIterator();
+
+            if (iterator.NextVisible(true))
+            {
+                do
+                {
+                    var fieldInfo = target.GetType().GetField(iterator.name,
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+                    if (fieldInfo != null)
+                    {
+                        var attr = fieldInfo.GetCustomAttributes(typeof(PropertyAttribute), true).FirstOrDefault() as PropertyAttribute;
+                        if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
+                        {
+                            drawer.Setup(fieldInfo);
+
+                            // tạo element mới cho từng field
+                            var element = new VisualElement();
+                            element = drawer.CreatePropertyGUI(iterator.Copy(), element);
+
+                            root.Add(element);
+                            continue;
+                        }
+                    }
+
+                    // Default UI
+                    var defaultField = new PropertyField(iterator.Copy());
+                    root.Add(defaultField);
+
+                } while (iterator.NextVisible(false));
+            }
+
+            return root;
+        }
     }
 }

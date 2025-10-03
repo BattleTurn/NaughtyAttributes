@@ -1,11 +1,20 @@
+using System;
 using UnityEngine;
 
-public class UIButtonAttribute : PropertyAttribute
+namespace CustomAttributes.Runtime
 {
-    public string MethodName { get; }
-
-    public UIButtonAttribute(string methodName, UIButtonStyleEnum style = UIButtonStyleEnum.Default)
+    public class UIButtonAttribute : UIBaseAttribute
     {
-        MethodName = methodName;
+        public string MethodName { get; }
+
+        public UIButtonAttribute(string methodName, Enum enumValue) : base(enumValue)
+        {
+            MethodName = methodName;
+        }
+
+        public UIButtonAttribute(string methodName) : base()
+        {
+            MethodName = methodName;
+        }
     }
 }

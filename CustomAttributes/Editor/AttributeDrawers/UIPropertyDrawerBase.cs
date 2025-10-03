@@ -2,68 +2,78 @@ using System;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine.UIElements;
+using CustomAttributes.Runtime;
 
-public abstract class UIPropertyDrawerBase<T> : IUIPropertyDrawer where T : Enum
+namespace CustomAttributes.Editor
 {
-    public abstract Type TargetAttribute { get; }
-    public T EnumValue { get; }
-    public VisualTreeAsset UXML
+    public abstract class UIPropertyDrawerBase<T> : IUIPropertyDrawer where T : Attribute
     {
-        get
+        public Type AttributeType => typeof(T);
+        public T TargetAttribute { get; protected set; }
+        public string EnumValue { get; }
+
+        public VisualTreeAsset UXML
         {
-            if (UIStyleConfig.Instance[EnumValue] == null)
+            get
             {
-                UnityEngine.Debug.LogWarning($"UXML for {EnumValue} is missing in UIStyle");
-                return null;
+                if (UIStyleConfig.Instance[AttributeType, EnumValue.ToString()] == null)
+                {
+                    UnityEngine.Debug.LogWarning($"UXML for {EnumValue} is missing in UIStyle");
+                    return null;
+                }
+                return UIStyleConfig.Instance[AttributeType, EnumValue.ToString()].uxml;
             }
-            return UIStyleConfig.Instance[EnumValue].uxml;
         }
-    }
-    public StyleSheet USS
-    {
-        get
+        public StyleSheet USS
         {
-            if (UIStyleConfig.Instance[EnumValue] == null)
+            get
             {
-                UnityEngine.Debug.LogWarning($"USS for {EnumValue} is missing in UIStyle");
-                return null;
+                if (UIStyleConfig.Instance[AttributeType, EnumValue.ToString()] == null)
+                {
+                    UnityEngine.Debug.LogWarning($"USS for {EnumValue} is missing in UIStyle");
+                    return null;
+                }
+                return UIStyleConfig.Instance[AttributeType, EnumValue.ToString()].uss;
             }
-            return UIStyleConfig.Instance[EnumValue].uss;
         }
-    }
 
-    public UIPropertyDrawerBase(T enumValue)
-    {
-        EnumValue = enumValue;
-    }
-
-    public abstract void Setup(FieldInfo fieldInfo);
-
-    public abstract VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root);
-
-    protected VisualTreeAsset LoadUXML(VisualElement root)
-    {
-        if (UXML != null)
+        public UIPropertyDrawerBase(string enumValue)
         {
+            EnumValue = enumValue;
+        }
+
+        public UIPropertyDrawerBase() : this("Default")
+        {
+        }
+
+        public abstract void Setup(FieldInfo fieldInfo);
+
+        public abstract VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root);
+
+        protected VisualTreeAsset LoadUXML(VisualElement root)
+        {
+            if (UXML != null)
+            {
                 UXML.CloneTree(root);
                 return UXML;
+            }
+            else
+                UnityEngine.Debug.LogWarning($"UXML is missing");
+
+            return null;
         }
-        else
-            UnityEngine.Debug.LogWarning($"UXML is missing");
 
-        return null;
-    }
-
-    protected StyleSheet LoadUSS(VisualElement root)
-    {
-        if (USS != null)
+        protected StyleSheet LoadUSS(VisualElement root)
         {
-            root.styleSheets.Add(USS);
-            return USS;
-        }
-        else
-            UnityEngine.Debug.LogWarning($"USS is missing");
+            if (USS != null)
+            {
+                root.styleSheets.Add(USS);
+                return USS;
+            }
+            else
+                UnityEngine.Debug.LogWarning($"USS is missing");
 
-        return null;
+            return null;
+        }
     }
 }

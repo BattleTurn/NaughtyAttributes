@@ -1,12 +1,19 @@
+using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-[System.Serializable]
-public abstract class UIStyle : ScriptableObject
+namespace CustomAttributes.Runtime
 {
-    [SerializeField] private string styleName;
-    public string StyleName => styleName;
+    [Serializable]
+    public abstract class UIStyle : ScriptableObject
+    {
+        [SerializeField] private string styleName;
 
-    public VisualTreeAsset uxml;
-    public StyleSheet uss;
+        public VisualTreeAsset uxml;
+        public StyleSheet uss;
+
+        public abstract Type Type { get; }
+        public string StyleName => styleName;
+    }
+
 }
