@@ -1,6 +1,6 @@
 using System;
 
-namespace CustomAttributes.Runtime
+namespace CustomAttributes.Core
 {
     /// <summary>
     /// Makes a field read-only in the inspector.
@@ -8,12 +8,16 @@ namespace CustomAttributes.Runtime
     /// <remarks>
     /// This attribute is only for visual purposes and does not affect the field's behavior in any way.
     /// </remarks>
-    [System.AttributeUsage(System.AttributeTargets.Field, Inherited = true, AllowMultiple = false)]
-    public class UIReadOnlyAttribute : UIBaseAttribute
+    [AttributeUsage(AttributeTargets.Field, Inherited = true, AllowMultiple = false)]
+    public class UIReadOnlyAttribute : Attribute, IStylizeAttribute
     {
+        private string _style = "Default";
+        
         public string Name { get; protected set; }
 
-        public UIReadOnlyAttribute(Enum enumValue) : base(enumValue)
+        public string StyleName => _style;
+
+        public UIReadOnlyAttribute(Enum enumValue)
         {
             Name = enumValue.ToString();
         }

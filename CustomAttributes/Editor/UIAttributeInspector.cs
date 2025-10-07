@@ -12,19 +12,20 @@ namespace CustomAttributes.Editor
     [CustomEditor(typeof(MonoBehaviour), true)]
     public class UIAttributeInspector : UnityEditor.Editor
     {
-        private static Dictionary<Type, IUIPropertyDrawer> _drawers;
+        
+        private static Dictionary<Type, UIPropertyDrawerBase> _drawers;
 
         static UIAttributeInspector()
         {
-            _drawers = new Dictionary<Type, IUIPropertyDrawer>();
+            _drawers = new Dictionary<Type, UIPropertyDrawerBase>();
             var drawerTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
-                .Where(t => typeof(IUIPropertyDrawer).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+                .Where(t => typeof(UIPropertyDrawerBase).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
 
             foreach (var type in drawerTypes)
             {
-                var instance = (IUIPropertyDrawer)Activator.CreateInstance(type);
-                _drawers[instance.AttributeType] = instance;
+                var instance = (UIPropertyDrawerBase)Activator.CreateInstance(type);
+                _drawers[instance.BindAttributeType] = instance;
             }
         }
 
@@ -45,7 +46,6 @@ namespace CustomAttributes.Editor
                         var attr = fieldInfo.GetCustomAttributes(typeof(PropertyAttribute), true).FirstOrDefault() as PropertyAttribute;
                         if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
                         {
-                            drawer.Setup(fieldInfo);
 
                             // tạo element mới cho từng field
                             var element = new VisualElement();

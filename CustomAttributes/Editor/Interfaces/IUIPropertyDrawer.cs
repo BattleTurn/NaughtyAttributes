@@ -7,11 +7,9 @@ namespace CustomAttributes.Editor
 {
     public interface IUIPropertyDrawer
     {
-        Type AttributeType { get; }
         VisualTreeAsset UXML { get; }
         StyleSheet USS { get; }
-
-        void Setup(FieldInfo fieldInfo);
+        public string StyleName { get; }
 
         VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root);
     }

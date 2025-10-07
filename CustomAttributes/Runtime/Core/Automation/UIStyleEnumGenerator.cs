@@ -5,7 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 
-namespace CustomAttributes.Runtime
+namespace CustomAttributes.Core
 {
     public static class UIStyleEnumGenerator
     {
@@ -43,6 +43,7 @@ namespace CustomAttributes.Runtime
                 Directory.CreateDirectory(OutputFolder);
 
             var grouped = config.GroupBy(s => s.GetType().Name);
+            grouped = grouped.Distinct();
 
             foreach (var group in grouped)
             {

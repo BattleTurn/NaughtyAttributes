@@ -1,44 +1,43 @@
+using System;
 using System.Reflection;
+
 using UnityEngine;
 using UnityEngine.UIElements;
+
 using UnityEditor;
 
-using CustomAttributes.Runtime;
+using CustomAttributes.Core;
 
 namespace CustomAttributes.Editor
 {
-    public class UIButtonDrawer : UIPropertyDrawerBase<UIButtonAttribute>
+    public class UIButtonDrawer : UIPropertyDrawer<UIButtonAttribute>
     {
-        public override void Setup(FieldInfo fieldInfo)
-        {
-            TargetAttribute = fieldInfo.GetCustomAttribute<UIButtonAttribute>();
-        }
+        public override Type BindAttributeType => typeof(UIButtonAttribute);
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {
-            LoadUXML(root);
-            LoadUSS(root);
+            base.CreatePropertyGUI(property, root);
 
             var button = root.Q<Button>("button");
 
             Debug.Log("CreatePropertyGUI for Button: " + button.name);
             if (button != null)
             {
-                button.text = TargetAttribute != null ? TargetAttribute.MethodName : "Unnamed Button";
+                button.text = targetAttribute != null ? targetAttribute.MethodName : "Unnamed Button";
 
                 button.clicked += () =>
                 {
                     Debug.Log($"Button '{button.text}' clicked!");
-                    if (TargetAttribute != null)
+                    if (targetAttribute != null)
                     {
                         var method = property.serializedObject.targetObject
                             .GetType()
-                            .GetMethod(TargetAttribute.MethodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            .GetMethod(targetAttribute.MethodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
                         if (method != null)
                             method.Invoke(property.serializedObject.targetObject, null);
                         else
-                            Debug.LogWarning($"Method '{TargetAttribute.MethodName}' not found on {property.serializedObject.targetObject}");
+                            Debug.LogWarning($"Method '{targetAttribute.MethodName}' not found on {property.serializedObject.targetObject}");
                     }
                 };
             }

@@ -6,16 +6,16 @@ using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 
-namespace CustomAttributes.Runtime
+namespace CustomAttributes.Core
 {
     [CreateAssetMenu(menuName = PathNameConst.UI_CONFIG_PATH + "/" + nameof(UIStyleConfig), fileName = nameof(UIStyleConfig))]
     public class UIStyleConfig : ScriptableObject
     {
         private static UIStyleConfig _instance;
 
-        public List<UIStyle> styles = new List<UIStyle>();
+        public List<UIStyleBase> styles = new List<UIStyleBase>();
 
-        private Dictionary<Type, List<UIStyle>> styleMap = new();
+        private Dictionary<Type, List<UIStyleBase>> styleMap = new();
 
         public static UIStyleConfig Instance
         {
@@ -29,7 +29,7 @@ namespace CustomAttributes.Runtime
             }
         }
 
-        public List<UIStyle> this[Type type]
+        public List<UIStyleBase> this[Type type]
         {
             get
             {
@@ -38,18 +38,17 @@ namespace CustomAttributes.Runtime
             }
         }
 
-        public UIStyle this[Type attributeType, string styleName = "Default"]
+        public UIStyleBase this[Type attributeType, string styleName = "Default"]
         {
             get
             {
-                Debug.Log($"[UIStyleConfig] styleEnum Type: {attributeType.GetType().FullName}, Resolved Style Type: {attributeType}");
                 if (attributeType == null) return null;
-                Debug.Log($"[UIStyleConfig] Getting style of type {attributeType} for enum {styleName}");
                 StyleMap();
+                
                 if (styleMap.TryGetValue(attributeType, out var list))
                 {
-                    string enumName = attributeType.ToString();
-                    return list.Where(s => s.StyleName == enumName).FirstOrDefault();
+                    Debug.Log($"[UIStyleConfig] style Type: {attributeType.FullName}, Resolved Style Type: {attributeType}");
+                    return list.Find(s => s.StyleName == styleName);
                 }
                 return null;
             }
@@ -101,7 +100,7 @@ namespace CustomAttributes.Runtime
         {
             if (styleMap.Count == 0)
             {
-                styleMap = styles.GroupBy(s => s.GetType()).ToDictionary(g => g.Key, g => g.ToList());
+                styleMap = styles.GroupBy(s => s.BindAttributeType).ToDictionary(g => g.Key, g => g.ToList());
             }
         }
     }

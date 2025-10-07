@@ -1,7 +1,9 @@
 {
-    "name": "CustomAttributes.Runtime",
-    "rootNamespace": "CustomAttributes.Runtime",
-    "references": [],
+    "name": "CustomAttributes.Test",
+    "rootNamespace": "CustomAttributes.Test",
+    "references": [
+        "GUID:61567a7aaacaf414a9c8b26a045120b8"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

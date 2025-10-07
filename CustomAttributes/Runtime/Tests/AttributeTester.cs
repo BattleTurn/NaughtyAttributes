@@ -1,11 +1,10 @@
 using UnityEngine;
-using CustomAttributes.Runtime;
+using CustomAttributes.Core;
 
 namespace CustomAttributes.Tests
 {
     public class AttributeTester : MonoBehaviour
     {
-        // [Test("Hello from TestAttribute!")]
         [UIReadOnly]
         public int testField;
         [Space]
@@ -13,7 +12,7 @@ namespace CustomAttributes.Tests
         [SerializeField]
         private string anotherField;
         [UIButton("PrintHello")]
-        public string buttonField; // field này sẽ thành button trong Inspector
+        public string buttonField;
 
         private void PrintHello()
         {

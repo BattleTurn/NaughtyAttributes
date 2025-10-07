@@ -2,18 +2,18 @@ using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace CustomAttributes.Runtime
+namespace CustomAttributes.Core
 {
     [Serializable]
-    public abstract class UIStyle : ScriptableObject
+    public abstract class UIStyleBase : ScriptableObject, IAttributeTypeBinder
     {
         [SerializeField] private string styleName;
 
         public VisualTreeAsset uxml;
         public StyleSheet uss;
 
-        public abstract Type Type { get; }
         public string StyleName => styleName;
+        public abstract Type BindAttributeType { get; }
     }
 
 }

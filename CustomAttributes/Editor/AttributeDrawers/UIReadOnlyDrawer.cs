@@ -1,19 +1,19 @@
 using System;
-using System.Reflection;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 
-using CustomAttributes.Runtime;
+using CustomAttributes.Core;
 
 namespace CustomAttributes.Editor
 {
-    public class UIReadOnlyDrawer : UIPropertyDrawerBase<UIReadOnlyAttribute>
+    public class UIReadOnlyDrawer : UIPropertyDrawer<UIReadOnlyAttribute>
     {
+        public override Type BindAttributeType => typeof(UIReadOnlyAttribute);
+
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {
-            LoadUXML(root);
-            LoadUSS(root);
+            base.CreatePropertyGUI(property, root);
 
             var propertyField = root.Q<PropertyField>("property");
             if (propertyField != null)
@@ -22,12 +22,14 @@ namespace CustomAttributes.Editor
                 propertyField.BindProperty(property);
                 propertyField.SetEnabled(false);
             }
+            else
+            {
+                EditorGUI.BeginDisabledGroup(true);
+                EditorGUILayout.PropertyField(property, true);
+                EditorGUI.EndDisabledGroup();
+            }
 
             return root;
-        }
-
-        public override void Setup(FieldInfo fieldInfo)
-        {
         }
     }
 }
