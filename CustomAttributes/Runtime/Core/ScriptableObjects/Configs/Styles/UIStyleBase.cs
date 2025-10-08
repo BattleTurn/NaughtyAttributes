@@ -14,6 +14,11 @@ namespace CustomAttributes.Core
 
         public string StyleName => styleName;
         public abstract Type BindAttributeType { get; }
+
+        public void Initialize(string styleName)
+        {
+            this.styleName = styleName;
+        }
     }
 
 }

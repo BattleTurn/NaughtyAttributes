@@ -1,6 +1,9 @@
 using System;
+
 using UnityEditor;
 using UnityEditor.UIElements;
+
+using UnityEngine;
 using UnityEngine.UIElements;
 
 using CustomAttributes.Core;
@@ -16,19 +19,16 @@ namespace CustomAttributes.Editor
             base.CreatePropertyGUI(property, root);
 
             var propertyField = root.Q<PropertyField>("property");
-            if (propertyField != null)
+            Debug.Log("CreatePropertyGUI for ReadOnly: " + property.name);
+
+            if (propertyField == null)
             {
-                UnityEngine.Debug.Log("CreatePropertyGUI for ReadOnly: " + property.name);
-                propertyField.BindProperty(property);
-                propertyField.SetEnabled(false);
-            }
-            else
-            {
-                EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.PropertyField(property, true);
-                EditorGUI.EndDisabledGroup();
+                propertyField = new PropertyField(property);
+                root.Add(propertyField);
             }
 
+            propertyField.BindProperty(property);
+            propertyField.SetEnabled(false);
             return root;
         }
     }

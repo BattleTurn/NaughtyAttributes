@@ -2,17 +2,21 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
+
 using UnityEngine;
 using UnityEngine.UIElements;
+
 using UnityEditor;
 using UnityEditor.UIElements;
+
+using CustomAttributes.Core;
 
 namespace CustomAttributes.Editor
 {
     [CustomEditor(typeof(MonoBehaviour), true)]
     public class UIAttributeInspector : UnityEditor.Editor
     {
-        
+
         private static Dictionary<Type, UIPropertyDrawerBase> _drawers;
 
         static UIAttributeInspector()
@@ -43,11 +47,10 @@ namespace CustomAttributes.Editor
 
                     if (fieldInfo != null)
                     {
-                        var attr = fieldInfo.GetCustomAttributes(typeof(PropertyAttribute), true).FirstOrDefault() as PropertyAttribute;
+                        var attr = fieldInfo.GetCustomAttributes(typeof(IStylizeAttribute), true).FirstOrDefault() as IStylizeAttribute;
                         if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
                         {
 
-                            // tạo element mới cho từng field
                             var element = new VisualElement();
                             element = drawer.CreatePropertyGUI(iterator.Copy(), element);
 
@@ -56,7 +59,6 @@ namespace CustomAttributes.Editor
                         }
                     }
 
-                    // Default UI
                     var defaultField = new PropertyField(iterator.Copy());
                     root.Add(defaultField);
 

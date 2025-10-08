@@ -17,10 +17,10 @@ namespace CustomAttributes.Editor
             {
                 Type attributeType = BindAttributeType;
 
-                UnityEngine.Debug.Log($"Retrieving UXML for EnumValue: {styleName} and AttributeType: {attributeType}");
+                // UnityEngine.Debug.Log($"Retrieving UXML for EnumValue: {styleName} and AttributeType: {attributeType}");
                 if (UIStyleConfig.Instance[attributeType, styleName] == null)
                 {
-                    UnityEngine.Debug.LogWarning($"UXML for {styleName} is missing in UIStyle");
+                    // UnityEngine.Debug.LogWarning($"UXML for {styleName} is missing in UIStyle");
                     return null;
                 }
                 return UIStyleConfig.Instance[attributeType, styleName].uxml;
@@ -32,10 +32,10 @@ namespace CustomAttributes.Editor
             {
                 Type attributeType = BindAttributeType;
 
-                UnityEngine.Debug.Log($"Retrieving USS for EnumValue: {styleName} and AttributeType: {attributeType}");
+                // UnityEngine.Debug.Log($"Retrieving USS for EnumValue: {styleName} and AttributeType: {attributeType}");
                 if (UIStyleConfig.Instance[attributeType, styleName] == null)
                 {
-                    UnityEngine.Debug.LogWarning($"USS for {styleName} is missing in UIStyle");
+                    // UnityEngine.Debug.LogWarning($"USS for {styleName} is missing in UIStyle");
                     return null;
                 }
                 return UIStyleConfig.Instance[attributeType, styleName].uss;
@@ -57,14 +57,14 @@ namespace CustomAttributes.Editor
 
         protected VisualTreeAsset LoadUXML(VisualElement root)
         {
-            UnityEngine.Debug.Log($"Loading UXML for {BindAttributeType}, UXML: {UXML}");
+            // UnityEngine.Debug.Log($"Loading UXML for {BindAttributeType}, UXML: {UXML}");
             if (UXML != null)
             {
                 UXML.CloneTree(root);
                 return UXML;
             }
             else
-                UnityEngine.Debug.LogWarning($"UXML is missing");
+                // UnityEngine.Debug.LogWarning($"UXML is missing");
 
             return null;
         }
@@ -76,8 +76,8 @@ namespace CustomAttributes.Editor
                 root.styleSheets.Add(USS);
                 return USS;
             }
-            else
-                UnityEngine.Debug.LogWarning($"USS is missing");
+            // else
+                // UnityEngine.Debug.LogWarning($"USS is missing");
 
             return null;
         }

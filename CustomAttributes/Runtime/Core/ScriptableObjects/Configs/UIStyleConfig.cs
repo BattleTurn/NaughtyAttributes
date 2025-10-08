@@ -47,7 +47,7 @@ namespace CustomAttributes.Core
                 
                 if (styleMap.TryGetValue(attributeType, out var list))
                 {
-                    Debug.Log($"[UIStyleConfig] style Type: {attributeType.FullName}, Resolved Style Type: {attributeType}");
+                    // Debug.Log($"[UIStyleConfig] style Type: {attributeType.FullName}, Resolved Style Type: {attributeType}");
                     return list.Find(s => s.StyleName == styleName);
                 }
                 return null;
@@ -57,18 +57,19 @@ namespace CustomAttributes.Core
         private static void InitializeInstance()
         {
             // Try to load from Resources by type
-
             UIStyleConfig[] configs = AssetDatabase.FindAssets("t:UIStyleConfig")
                 .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
                 .Select(path => AssetDatabase.LoadAssetAtPath<UIStyleConfig>(path))
                 .ToArray();
-            Debug.Log($"[UIStyleConfig] Found {configs.Length} UIStyleConfig assets in Resources.");
+            // Debug.Log($"[UIStyleConfig] Found {configs.Length} UIStyleConfig assets in Resources.");
             if (configs.Length > 1)
                 Debug.LogWarning("[UIStyleConfig] Multiple UIStyleConfig assets found in Resources. Using the first one found.");
             else if (configs.Length == 0 || configs == null)
                 AutoCreateInstance();
             else
                 _instance = configs.FirstOrDefault();
+
+            StyleGenerator.EnsureDefaultStylesExist();
         }
 
         private static void AutoCreateInstance()
