@@ -1,19 +1,18 @@
 using UnityEngine;
-using CustomAttributes.Core;
+using StylizeAttributes.Core;
 
-namespace CustomAttributes.Tests
+namespace StylizeAttributes.Tests
 {
     public class AttributeTester : MonoBehaviour
     {
-        [UIReadOnly]
+        [ReadOnly]
         public int testField;
         [Space]
         [Header("Another Field")]
         [SerializeField]
         private string anotherField;
-        [UIButton("PrintHello")]
-        public string buttonField;
 
+        [Button("PrintHello")]
         private void PrintHello()
         {
             Debug.Log("Hello from UIButton!");

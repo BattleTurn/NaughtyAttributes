@@ -6,13 +6,13 @@ using UnityEngine.UIElements;
 
 using UnityEditor;
 
-using CustomAttributes.Core;
+using StylizeAttributes.Core;
 
-namespace CustomAttributes.Editor
+namespace StylizeAttributes.Editor
 {
-    public class UIButtonDrawer : UIPropertyDrawer<UIButtonAttribute>
+    public class ButtonDrawer : PropertyDrawer<ButtonAttribute>
     {
-        public override Type BindAttributeType => typeof(UIButtonAttribute);
+        public override Type BindAttributeType => typeof(ButtonAttribute);
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {

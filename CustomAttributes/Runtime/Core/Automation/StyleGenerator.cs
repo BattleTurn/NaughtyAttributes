@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     public static class StyleGenerator
     {
@@ -33,6 +33,24 @@ namespace CustomAttributes.Core
 
         public static void CreateDefaultStyle(Type styleType)
         {
+            // Compute Unity-relative and absolute paths
+            var folderRelative = $"Assets/{PathNameConst.UI_CONFIG_STYLE_PATH}";
+            var assetPath = $"{folderRelative}/{styleType.Name}.asset";
+            var folderAbsolute = System.IO.Path.Combine(Application.dataPath, PathNameConst.UI_CONFIG_STYLE_PATH).Replace('\\', '/');
+
+            // If asset already exists, load and register it instead of re-creating
+            var existing = AssetDatabase.LoadAssetAtPath<UIStyleBase>(assetPath);
+            if (existing != null)
+            {
+                var existingConfig = UIStyleConfig.Instance;
+                if (!existingConfig.styles.Contains(existing))
+                {
+                    existingConfig.styles.Add(existing);
+                    EditorUtility.SetDirty(existingConfig);
+                }
+                return;
+            }
+
             var style = ScriptableObject.CreateInstance(styleType) as UIStyleBase;
             if (style == null)
             {
@@ -42,17 +60,16 @@ namespace CustomAttributes.Core
 
             style.Initialize("Default");
 
-            // Ensure the directory exists
-            var directory = PathNameConst.UI_CONFIG_STYLE_PATH;
-            if (!System.IO.Directory.Exists(directory))
+            // Ensure the directory exists on disk (absolute path)
+            Debug.Log($"Ensuring directory exists: {folderAbsolute}");
+            if (!System.IO.Directory.Exists(folderAbsolute))
             {
-                System.IO.Directory.CreateDirectory(directory);
+                System.IO.Directory.CreateDirectory(folderAbsolute);
             }
 
             // Assign USS and UXML files
-            var uiFolder = "Packages/NaughtyAttributes/CustomAttributes/Editor/AttributeDrawers/UI";
-            var ussPath = $"{uiFolder}/Styles/{styleType.Name.Replace("Style", "Field")}.uss";
-            var uxmlPath = $"{uiFolder}/UXMLs/{styleType.Name.Replace("Style", "Field")}.uxml";
+            var ussPath = $"{PathNameConst.PACKAGE_USS_PATH}/{styleType.Name.Replace("Style", "Field")}.uss";
+            var uxmlPath = $"{PathNameConst.PACKAGE_UXML_PATH}/{styleType.Name.Replace("Style", "Field")}.uxml";
 
             if (System.IO.File.Exists(ussPath))
             {
@@ -74,13 +91,15 @@ namespace CustomAttributes.Core
                 Debug.LogWarning($"UXML file not found: {uxmlPath}");
             }
 
-            // Save the ScriptableObject as an asset
-            var assetPath = $"{directory}/{styleType.Name}.asset";
+            // Save the ScriptableObject as an asset (Unity-relative path required)
             AssetDatabase.CreateAsset(style, assetPath);
+            AssetDatabase.SaveAssets();
 
             // Add the created style to the UIStyleConfig
             var config = UIStyleConfig.Instance;
             config.styles.Add(style);
+            EditorUtility.SetDirty(config);
+            EditorUtility.SetDirty(style);
         }
     }
 }

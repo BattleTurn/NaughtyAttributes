@@ -3,10 +3,11 @@ using System;
 using UnityEditor;
 using UnityEngine.UIElements;
 
-using CustomAttributes.Core;
-namespace CustomAttributes.Editor
+using StylizeAttributes.Core;
+
+namespace StylizeAttributes.Editor
 {
-    public abstract class UIPropertyDrawerBase : IAttributeTypeBinder, IUIPropertyDrawer
+    public abstract class PropertyDrawerBase : IAttributeTypeBinder, IUIPropertyDrawer
     {
         protected string styleName = "Default";
 
@@ -44,16 +45,17 @@ namespace CustomAttributes.Editor
 
         public abstract Type BindAttributeType { get; }
 
-        public UIPropertyDrawerBase(string styleName)
+        public PropertyDrawerBase(string styleName)
         {
             this.styleName = styleName;
         }
 
-        public UIPropertyDrawerBase() : this("Default")
+        public PropertyDrawerBase() : this("Default")
         {
         }
 
         public abstract VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root);
+        public abstract void BindTargetAttribute(IStylizeAttribute attribute);
 
         protected VisualTreeAsset LoadUXML(VisualElement root)
         {

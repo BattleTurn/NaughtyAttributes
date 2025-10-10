@@ -1,6 +1,6 @@
 using System;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     /// <summary>
     /// Makes a field read-only in the inspector.
@@ -9,7 +9,7 @@ namespace CustomAttributes.Core
     /// This attribute is only for visual purposes and does not affect the field's behavior in any way.
     /// </remarks>
     [AttributeUsage(AttributeTargets.Field, Inherited = true, AllowMultiple = false)]
-    public class UIReadOnlyAttribute : Attribute, IStylizeAttribute
+    public class ReadOnlyAttribute : Attribute, IStylizeAttribute
     {
         private string _style = "Default";
         
@@ -17,12 +17,12 @@ namespace CustomAttributes.Core
 
         public string StyleName => _style;
 
-        public UIReadOnlyAttribute(Enum enumValue)
+        public ReadOnlyAttribute(Enum enumValue)
         {
             Name = enumValue.ToString();
         }
 
-        public UIReadOnlyAttribute() : base()
+        public ReadOnlyAttribute() : base()
         {
         }
     }

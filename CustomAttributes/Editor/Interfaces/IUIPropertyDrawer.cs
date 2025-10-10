@@ -3,7 +3,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine.UIElements;
 
-namespace CustomAttributes.Editor
+namespace StylizeAttributes.Editor
 {
     public interface IUIPropertyDrawer
     {

@@ -1,6 +1,6 @@
 using System;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     public interface IAttributeTypeBinder
     {

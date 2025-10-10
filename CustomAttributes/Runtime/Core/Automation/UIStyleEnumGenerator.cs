@@ -5,7 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     public static class UIStyleEnumGenerator
     {

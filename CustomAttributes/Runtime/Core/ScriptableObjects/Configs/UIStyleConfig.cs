@@ -6,7 +6,7 @@ using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     [CreateAssetMenu(menuName = PathNameConst.UI_CONFIG_PATH + "/" + nameof(UIStyleConfig), fileName = nameof(UIStyleConfig))]
     public class UIStyleConfig : ScriptableObject

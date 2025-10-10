@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     [Serializable]
     public abstract class UIStyleBase : ScriptableObject, IAttributeTypeBinder

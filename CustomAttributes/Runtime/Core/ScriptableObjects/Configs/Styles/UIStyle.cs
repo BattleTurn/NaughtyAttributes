@@ -1,6 +1,6 @@
 using System;
 
-namespace CustomAttributes.Core
+namespace StylizeAttributes.Core
 {
     public abstract class UIStyle<T> : UIStyleBase, IAttributeTypeBinder where T : Attribute
     {

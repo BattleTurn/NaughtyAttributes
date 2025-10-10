@@ -6,13 +6,13 @@ using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-using CustomAttributes.Core;
+using StylizeAttributes.Core;
 
-namespace CustomAttributes.Editor
+namespace StylizeAttributes.Editor
 {
-    public class UIReadOnlyDrawer : UIPropertyDrawer<UIReadOnlyAttribute>
+    public class ReadOnlyDrawer : PropertyDrawer<ReadOnlyAttribute>
     {
-        public override Type BindAttributeType => typeof(UIReadOnlyAttribute);
+        public override Type BindAttributeType => typeof(ReadOnlyAttribute);
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {
