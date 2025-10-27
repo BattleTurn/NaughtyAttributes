@@ -7,7 +7,7 @@ using StylizeAttributes.Core;
 
 namespace StylizeAttributes.Editor
 {
-    public abstract class PropertyDrawerBase : IAttributeTypeBinder, IUIPropertyDrawer
+    public abstract class PropertyDrawerBase : ITypeBinder, IPropertyDrawer
     {
         protected string styleName = "Default";
 
@@ -16,7 +16,7 @@ namespace StylizeAttributes.Editor
         {
             get
             {
-                Type attributeType = BindAttributeType;
+                Type attributeType = BindType;
 
                 // UnityEngine.Debug.Log($"Retrieving UXML for EnumValue: {styleName} and AttributeType: {attributeType}");
                 if (UIStyleConfig.Instance[attributeType, styleName] == null)
@@ -31,7 +31,7 @@ namespace StylizeAttributes.Editor
         {
             get
             {
-                Type attributeType = BindAttributeType;
+                Type attributeType = BindType;
 
                 // UnityEngine.Debug.Log($"Retrieving USS for EnumValue: {styleName} and AttributeType: {attributeType}");
                 if (UIStyleConfig.Instance[attributeType, styleName] == null)
@@ -43,7 +43,7 @@ namespace StylizeAttributes.Editor
             }
         }
 
-        public abstract Type BindAttributeType { get; }
+        public abstract Type BindType { get; }
 
         public PropertyDrawerBase(string styleName)
         {
@@ -55,7 +55,7 @@ namespace StylizeAttributes.Editor
         }
 
         public abstract VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root);
-        public abstract void BindTargetAttribute(IStylizeAttribute attribute);
+        public abstract void BindTargetAttribute(IStylized attribute);
 
         protected VisualTreeAsset LoadUXML(VisualElement root)
         {

@@ -101,7 +101,7 @@ namespace StylizeAttributes.Core
         {
             if (styleMap.Count == 0)
             {
-                styleMap = styles.GroupBy(s => s.BindAttributeType).ToDictionary(g => g.Key, g => g.ToList());
+                styleMap = styles.GroupBy(s => s.BindType).ToDictionary(g => g.Key, g => g.ToList());
             }
         }
     }

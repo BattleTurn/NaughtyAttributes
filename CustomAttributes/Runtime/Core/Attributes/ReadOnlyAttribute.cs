@@ -9,7 +9,7 @@ namespace StylizeAttributes.Core
     /// This attribute is only for visual purposes and does not affect the field's behavior in any way.
     /// </remarks>
     [AttributeUsage(AttributeTargets.Field, Inherited = true, AllowMultiple = false)]
-    public class ReadOnlyAttribute : Attribute, IStylizeAttribute
+    public class ReadOnlyAttribute : Attribute, IStylized
     {
         private string _style = "Default";
         

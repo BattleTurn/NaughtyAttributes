@@ -12,7 +12,7 @@ namespace StylizeAttributes.Editor
 {
     public class ReadOnlyDrawer : PropertyDrawer<ReadOnlyAttribute>
     {
-        public override Type BindAttributeType => typeof(ReadOnlyAttribute);
+        public override Type BindType => typeof(ReadOnlyAttribute);
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {

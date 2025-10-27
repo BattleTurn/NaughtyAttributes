@@ -1,12 +1,14 @@
 using System;
+
 using UnityEditor;
 
-using StylizeAttributes.Core;
 using UnityEngine.UIElements;
+
+using StylizeAttributes.Core;
 
 namespace StylizeAttributes.Editor
 {
-    public abstract class PropertyDrawer<T> : PropertyDrawerBase, IAttributeBinder<T> where T : Attribute, IStylizeAttribute
+    public abstract class PropertyDrawer<T> : PropertyDrawerBase, IAttributeBinder<T> where T : Attribute, IStylized
     {
         protected T targetAttribute;
 
@@ -21,7 +23,7 @@ namespace StylizeAttributes.Editor
             return root;
         }
 
-        public override void BindTargetAttribute(IStylizeAttribute attribute)
+        public override void BindTargetAttribute(IStylized attribute)
         {
             if (attribute is T attr)
             {

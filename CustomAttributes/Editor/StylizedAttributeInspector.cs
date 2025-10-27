@@ -14,9 +14,10 @@ using StylizeAttributes.Core;
 namespace StylizeAttributes.Editor
 {
     [CustomEditor(typeof(MonoBehaviour), true)]
-    public class StylizedAttributeInspector : UnityEditor.Editor
+    public partial class StylizedAttributeInspector : UnityEditor.Editor
     {
-        private Dictionary<Type, PropertyDrawerBase> _drawers = new();
+        protected readonly Dictionary<Type, PropertyDrawerBase> _stylizedDrawers = new();
+        protected readonly Dictionary<Type, AutoDrawerBase> _autoDrawers = new();
 
         private IEnumerable<MethodInfo> _methods;
         private List<SerializedProperty> _serializedProperties = new List<SerializedProperty>();
@@ -25,10 +26,11 @@ namespace StylizeAttributes.Editor
         {
             _methods = ReflectionUtility.GetAllMethods(
                 target, m => m.GetCustomAttributes(typeof(ButtonAttribute), true).Length > 0);
-            GetDrawers();
+            CollectDrawers();
+            CollectAutoDrawers();
         }
 
-        private void GetDrawers()
+        private void CollectDrawers()
         {
             var drawerTypes = AppDomain.CurrentDomain.GetAssemblies()
                             .SelectMany(a => a.GetTypes())
@@ -37,8 +39,8 @@ namespace StylizeAttributes.Editor
             foreach (var type in drawerTypes)
             {
                 var instance = (PropertyDrawerBase)Activator.CreateInstance(type);
-                Debug.Log($"Registering drawer for attribute: {instance.BindAttributeType.Name}");
-                _drawers[instance.BindAttributeType] = instance;
+                Debug.Log($"Registering drawer for attribute: {instance.BindType.Name}");
+                _stylizedDrawers[instance.BindType] = instance;
             }
         }
 
@@ -77,8 +79,9 @@ namespace StylizeAttributes.Editor
 
                 if (fieldInfo != null)
                 {
-                    var attr = fieldInfo.GetCustomAttributes(typeof(IStylizeAttribute), true).FirstOrDefault() as IStylizeAttribute;
-                    if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
+                    // 1️⃣ Handle IStylizeAttribute
+                    var attr = fieldInfo.GetCustomAttributes(typeof(IStylized), true).FirstOrDefault() as IStylized;
+                    if (attr != null && _stylizedDrawers.TryGetValue(attr.GetType(), out var drawer))
                     {
 
                         var element = new VisualElement();
@@ -86,6 +89,12 @@ namespace StylizeAttributes.Editor
                         element = drawer.CreatePropertyGUI(prop, element);
 
                         root.Add(element);
+                        continue;
+                    }
+
+                    // 2️⃣ Let AutoDrawer handle automatically
+                    if (TryHandleAutoDrawer(fieldInfo, prop, root))
+                    {
                         continue;
                     }
                 }
@@ -105,8 +114,8 @@ namespace StylizeAttributes.Editor
 
             foreach (var method in _methods)
             {
-                var attr = method.GetCustomAttributes(typeof(IStylizeAttribute), true).FirstOrDefault() as IStylizeAttribute;
-                if (attr != null && _drawers.TryGetValue(attr.GetType(), out var drawer))
+                var attr = method.GetCustomAttributes(typeof(IStylized), true).FirstOrDefault() as IStylized;
+                if (attr != null && _stylizedDrawers.TryGetValue(attr.GetType(), out var drawer))
                 {
 
                     var element = new VisualElement();

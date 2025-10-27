@@ -2,12 +2,12 @@ using System;
 
 namespace StylizeAttributes.Core
 {
-    public interface IAttributeTypeBinder
+    public interface ITypeBinder
     {
-        public Type BindAttributeType { get; }
+        public Type BindType { get; }
     }
 
-    public interface IAttributeBinder<T>
+    public interface IAttributeBinder<T> where T : Attribute
     {
         public T TargetAttribute { get; }
     }

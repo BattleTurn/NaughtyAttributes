@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 namespace StylizeAttributes.Core
 {
     [Serializable]
-    public abstract class UIStyleBase : ScriptableObject, IAttributeTypeBinder
+    public abstract class UIStyleBase : ScriptableObject, ITypeBinder
     {
         [SerializeField] private string styleName;
 
@@ -13,7 +13,7 @@ namespace StylizeAttributes.Core
         public StyleSheet uss;
 
         public string StyleName => styleName;
-        public abstract Type BindAttributeType { get; }
+        public abstract Type BindType { get; }
 
         public void Initialize(string styleName)
         {

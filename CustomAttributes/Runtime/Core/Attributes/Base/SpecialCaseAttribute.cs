@@ -2,7 +2,7 @@ using System;
 
 namespace StylizeAttributes.Core
 {
-    public abstract class SpecialCaseDrawerAttribute : Attribute, IStylizeAttribute
+    public abstract class SpecialCaseDrawerAttribute : Attribute, IStylized
     {
 
         public string StyleName { get;  private set; }

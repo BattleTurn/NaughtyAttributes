@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 
 namespace StylizeAttributes.Editor
 {
-    public interface IUIPropertyDrawer
+    public interface IPropertyDrawer
     {
         VisualTreeAsset UXML { get; }
         StyleSheet USS { get; }

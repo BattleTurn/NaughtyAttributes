@@ -12,7 +12,7 @@ namespace StylizeAttributes.Editor
 {
     public class ButtonDrawer : PropertyDrawer<ButtonAttribute>
     {
-        public override Type BindAttributeType => typeof(ButtonAttribute);
+        public override Type BindType => typeof(ButtonAttribute);
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {

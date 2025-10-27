@@ -1,6 +1,6 @@
 namespace StylizeAttributes.Core
 {
-    public interface IStylizeAttribute
+    public interface IStylized
     {
         string StyleName { get; }
     }
