@@ -10,11 +10,11 @@ namespace StylizeAttributes.Editor
 {
     public abstract class AutoDrawer<T> : AutoDrawerBase, ITargetBinder<T> 
     {
-        protected T targetAttribute;
+        protected T targetObject;
 
         public override Type BindType => typeof(T);
 
-        public T TargetAttribute { get => targetAttribute; }
+        public T TargetObject { get => targetObject; }
 
         public override VisualElement CreatePropertyGUI(SerializedProperty property, VisualElement root)
         {
@@ -27,7 +27,7 @@ namespace StylizeAttributes.Editor
         {
             if (attribute is T attr)
             {
-                targetAttribute = attr;
+                targetObject = attr;
             }
             else
             {

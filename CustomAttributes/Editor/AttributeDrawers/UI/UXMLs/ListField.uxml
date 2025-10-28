@@ -1,0 +1,9 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="ListDrawerRoot" class="list-drawer">
+        <ui:VisualElement name="HeaderRow" class="list-header-row">
+            <ui:Label name="Header" text="List" class="list-header" />
+            <ui:Button name="AddButton" text="+" class="list-add-button" style="white-space: pre; height: auto; width: auto;" />
+        </ui:VisualElement>
+        <ui:VisualElement name="ListContent" class="list-content" />
+    </ui:VisualElement>
+</ui:UXML>

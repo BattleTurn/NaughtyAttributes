@@ -1,5 +1,6 @@
 using UnityEngine;
 using StylizeAttributes.Core;
+using System.Collections.Generic;
 
 namespace StylizeAttributes.Tests
 {
@@ -11,6 +12,8 @@ namespace StylizeAttributes.Tests
         [Header("Another Field")]
         [SerializeField]
         private string anotherField;
+
+        public List<Vector3> vectorList;
 
         [Button("PrintHello")]
         private void PrintHello()

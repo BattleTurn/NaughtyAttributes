@@ -1,0 +1,45 @@
+/* Styles for ListDrawer */
+.list-drawer {
+  padding: 4px;
+  border-left-width: 2px;
+  border-left-color: rgba(100, 100, 100, 0.3);
+  border-left-style: solid;
+  row-gap: 4px;
+}
+
+.list-header-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.list-header {
+  -unity-font-style: bold;
+  color: #D0D0D0;
+  margin-bottom: 2px;
+}
+
+.list-content {
+  margin-left: 6px;
+}
+
+/* Tweak default PropertyField spacing for list elements */
+.unity-property-field {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.list-element-row {
+  flex-direction: row;
+  align-items: center;
+  column-gap: 4px;
+}
+
+.list-element-field {
+  flex-grow: 1;
+}
+
+.list-btn-remove {
+  width: 22px;
+  height: 20px;
+}

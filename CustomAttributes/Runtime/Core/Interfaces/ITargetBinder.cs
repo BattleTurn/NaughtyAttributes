@@ -4,6 +4,6 @@ namespace StylizeAttributes.Core
 {
     public interface ITargetBinder<T>
     {
-        public T TargetAttribute { get; }
+        public T TargetObject { get; }
     }
 }

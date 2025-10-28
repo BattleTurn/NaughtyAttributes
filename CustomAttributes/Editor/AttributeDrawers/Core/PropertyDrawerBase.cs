@@ -12,6 +12,7 @@ namespace StylizeAttributes.Editor
         protected string styleName = "Default";
 
         public string StyleName => styleName;
+        public UIStyleBase styleBase => UIStyleConfig.Instance[BindType, styleName];
         public VisualTreeAsset UXML
         {
             get

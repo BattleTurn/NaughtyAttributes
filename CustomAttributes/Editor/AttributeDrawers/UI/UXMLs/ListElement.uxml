@@ -1,0 +1,6 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="ListElementRow" class="list-element-row">
+        <ui:VisualElement name="ElementFieldContainer" class="list-element-field" />
+        <ui:Button name="RemoveButton" text="x" class="list-btn-remove" />
+    </ui:VisualElement>
+</ui:UXML>
