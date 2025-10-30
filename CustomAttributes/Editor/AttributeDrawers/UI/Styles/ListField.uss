@@ -3,8 +3,6 @@
   padding: 4px;
   border-left-width: 2px;
   border-left-color: rgba(100, 100, 100, 0.3);
-  border-left-style: solid;
-  row-gap: 4px;
 }
 
 .list-header-row {
@@ -32,7 +30,6 @@
 .list-element-row {
   flex-direction: row;
   align-items: center;
-  column-gap: 4px;
 }
 
 .list-element-field {

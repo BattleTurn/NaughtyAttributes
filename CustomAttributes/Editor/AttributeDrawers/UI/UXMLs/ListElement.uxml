@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
-    <ui:VisualElement name="ListElementRow" class="list-element-row">
-        <ui:VisualElement name="ElementFieldContainer" class="list-element-field" />
-        <ui:Button name="RemoveButton" text="x" class="list-btn-remove" />
+    <ui:VisualElement name="ListElementRow" class="list-element-row" style="background-color: rgb(100, 100, 100); min-width: 100%; min-height: auto; border-left-color: rgb(130, 130, 130); border-bottom-color: rgb(130, 130, 130); border-right-color: rgb(130, 130, 130); border-top-color: rgb(130, 130, 130); border-left-width: 1px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px;">
+        <ui:VisualElement name="DragButton" style="flex-grow: 1; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; border-top-left-radius: 3px; border-top-right-radius: 3px; border-bottom-right-radius: 3px; border-bottom-left-radius: 3px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(48, 48, 48); border-right-color: rgb(48, 48, 48); border-top-color: rgb(48, 48, 48); border-bottom-color: rgb(48, 48, 48); height: 100%;" />
+        <ui:Label text="Label" name="ElementFieldLabel" style="margin-top: 0; margin-right: 0%; margin-bottom: 0; margin-left: 0; padding-right: 20%; padding-left: 5%;" />
+        <ui:VisualElement name="ElementFieldContainer" class="list-element-field" style="background-color: rgba(0, 0, 0, 0);" />
+        <ui:Button name="RemoveButton" text="×" class="list-btn-remove" style="width: 16px; min-width: 16px; max-width: 16px; margin-right: 5px; margin-top: 5px; margin-bottom: 5px; margin-left: 5px; padding-left: 0; padding-right: 0; padding-top: 0; padding-bottom: 0; height: 60%;" />
     </ui:VisualElement>
 </ui:UXML>

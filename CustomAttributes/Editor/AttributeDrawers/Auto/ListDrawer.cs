@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 using StylizeAttributes.Core;
+using System.Diagnostics;
 
 namespace StylizeAttributes.Editor
 {
@@ -84,11 +85,14 @@ namespace StylizeAttributes.Editor
                 {
                     row = elementTemplate.CloneTree();
                     row.AddToClassList("list-element-row");
+                    var fieldLabel = row.Q<Label>("ElementFieldLabel");
                     var fieldContainer = row.Q<VisualElement>("ElementFieldContainer") ?? row;
                     var removeBtn = row.Q<Button>("RemoveButton");
 
                     var field = new PropertyField(elementProp.Copy());
                     field.style.flexGrow = 1f;
+                    fieldLabel.text = elementProp.displayName;
+                    field.label = "";
                     field.BindProperty(elementProp);
                     fieldContainer.Add(field);
 
@@ -106,6 +110,62 @@ namespace StylizeAttributes.Editor
                             p.serializedObject.ApplyModifiedProperties();
                             RefreshList(contentArea, listProp, elementTemplate);
                         };
+                    }
+
+                    // Handle drag button 🧲
+                    var dragBtn = row.Q<VisualElement>("DragButton");
+                    if (dragBtn != null)
+                    {
+                        int dragIndex = i;
+                        VisualElement draggedElement = null;
+                        int targetIndex = -1;
+
+                        dragBtn.RegisterCallback<PointerDownEvent>(evt =>
+                        {
+                            draggedElement = row;
+                            draggedElement.AddToClassList("dragging");
+                            contentArea.CaptureMouse();
+                            // evt.StopPropagation();
+                            UnityEngine.Debug.Log("Drag down");
+                        });
+
+                        dragBtn.RegisterCallback<PointerMoveEvent>(evt =>
+                        {
+                            if (draggedElement == null || !contentArea.HasMouseCapture()) return;
+
+                            // Detect element hover
+                            var localPos = evt.localPosition;
+                            foreach (var child in contentArea.Children())
+                            {
+                                if (child.worldBound.Contains(evt.position) && child != draggedElement)
+                                {
+                                    targetIndex = contentArea.IndexOf(child);
+                                    break;
+                                }
+                            }
+                            
+                            UnityEngine.Debug.Log("Drag moving");
+                            // evt.StopPropagation();
+                        });
+
+                        dragBtn.RegisterCallback<PointerUpEvent>(evt =>
+                        {
+                            if (draggedElement == null) return;
+
+                            draggedElement.RemoveFromClassList("dragging");
+                            contentArea.ReleaseMouse();
+
+                            if (targetIndex >= 0 && targetIndex < listProp.arraySize && targetIndex != dragIndex)
+                            {
+                                listProp.serializedObject.Update();
+                                listProp.MoveArrayElement(dragIndex, targetIndex);
+                                listProp.serializedObject.ApplyModifiedProperties();
+                            }
+
+                            RefreshList(contentArea, listProp, elementTemplate);
+                            // evt.StopPropagation();
+                            UnityEngine.Debug.Log("Drag up");
+                        });
                     }
                 }
                 else
@@ -126,7 +186,8 @@ namespace StylizeAttributes.Editor
                         if (p.arraySize == oldSize) p.DeleteArrayElementAtIndex(i);
                         p.serializedObject.ApplyModifiedProperties();
                         RefreshList(contentArea, listProp, elementTemplate);
-                    }) { text = "−" };
+                    })
+                    { text = "−" };
                     removeBtn.AddToClassList("list-btn-remove");
                     row.Add(removeBtn);
                 }
